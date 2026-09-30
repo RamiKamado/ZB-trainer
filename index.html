@@ -152,6 +152,8 @@ h1 em{font-style:normal;color:var(--y)}
  padding:5px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap}
 .prev .addbtn:hover{border-color:var(--y);color:var(--y)}
 .prev .addbtn.done{border-color:var(--ok);color:var(--ok)}
+.prev .addbtn.del:hover:not(:disabled){border-color:#ff6b6b;color:#ff6b6b}
+.prev .addbtn:disabled{opacity:.4;cursor:default}
 .done{text-align:center;color:var(--ok);font-size:14px}
 @media (max-width:700px){
   .run{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr) auto auto;gap:8px}
@@ -392,6 +394,7 @@ function saveSel(){ save('zbll-practice-sel', idsToKeys(sel)); }
 
 /* presets: [{name, keys:[...]}] */
 let presets=load('zbll-practice-presets',[]);
+let lastPreset=load('zbll-practice-lastpreset',null);
 let zOn=load('zbll-zbls-on',false);
 let zSel=new Set(load('zbll-zbls-cases',[]));
 let zSlots=new Set(load('zbll-zbls-slots',[0]));
@@ -422,7 +425,8 @@ function applyCustom(i, text){
   return {ok:sols[0]};
 }
 function resetCustom(i){ delete zCustom[i]; saveZ(); }
-function savePresets(){ save('zbll-practice-presets',presets); renderPresets(); renderTargets(); }
+function savePresets(){ save('zbll-practice-presets',presets); save('zbll-practice-lastpreset',lastPreset);
+  renderPresets(); renderTargets(); }
 
 let tid;
 function toast(msg){ const t=el('toast'); t.textContent=msg; t.classList.add('on');
@@ -512,7 +516,8 @@ function renderPresets(){
     d.innerHTML=`<span class="pn">${p.name}</span><span class="pc">${p.keys.length} ケース</span>`;
     const mk=(txt,fn)=>{ const b=document.createElement('button');
       b.className='mini'; b.type='button'; b.textContent=txt; b.onclick=fn; d.appendChild(b); };
-    mk('読込',()=>{ sel=new Set(keysToIds(p.keys)); sync(); toast(`「${p.name}」を読み込みました`); });
+    mk('読込',()=>{ sel=new Set(keysToIds(p.keys)); target=p.name; lastPreset=p.name;
+      sync(); toast(`「${p.name}」を読み込みました`); });
     mk('追加',()=>{ keysToIds(p.keys).forEach(x=>sel.add(x)); sync(); toast('選択に追加しました'); });
     mk('上書き',()=>{ if(!sel.size) return toast('ケースが選択されていません');
       p.keys=idsToKeys(sel); savePresets(); toast('上書きしました'); });
@@ -676,7 +681,6 @@ document.addEventListener('keydown',e=>{
   if(!el('scr-run').classList.contains('on')) return;
   if(e.code==='Space'){ e.preventDefault(); if(!e.repeat) holdStart(); return; }
   if(state==='running'){ e.preventDefault(); stop(); return; }
-  if(e.key==='p'||e.key==='P'){ addPrevToPreset(el('padd')); }
 });
 document.addEventListener('keyup',e=>{
   if(!el('scr-run').classList.contains('on')) return;
@@ -717,8 +721,15 @@ function renderTargets(){
     o.value=p.name; o.textContent=`${p.name} (${p.keys.length})`; s.appendChild(o); });
   const o=document.createElement('option'); o.value='__new__'; o.textContent='＋ 新しいプリセット…';
   s.appendChild(o);
+  if(!target && lastPreset && presets.some(p=>p.name===lastPreset)) target=lastPreset;
   if(target && presets.some(p=>p.name===target)) s.value=target;
   else { target = presets.length?presets[0].name:'__new__'; s.value=target; }
+  const del=el('pdel');
+  if(del){
+    const inPreset = prev && presets.some(p=>p.name===target && p.keys.includes(CKEY(prev.c)));
+    del.disabled=!inPreset;
+    del.title=inPreset?'このプリセットから外す (D)':'このプリセットには登録されていません';
+  }
 }
 function addPrevToPreset(btn){
   if(!prev) return toast('まだ記録がありません');
@@ -737,6 +748,17 @@ function addPrevToPreset(btn){
   if(btn){ const t=btn.textContent; btn.textContent='追加しました'; btn.classList.add('done');
     setTimeout(()=>{ btn.textContent=t; btn.classList.remove('done'); },1200); }
 }
+function removePrevFromPreset(btn){
+  if(!prev) return toast('まだ記録がありません');
+  if(target==='__new__' || !presets.length) return toast('プリセットを選んでください');
+  const p=presets.find(x=>x.name===target); if(!p) return;
+  const k=CKEY(prev.c), i=p.keys.indexOf(k);
+  if(i<0) return toast(`「${target}」に登録されていません`);
+  p.keys.splice(i,1); savePresets();
+  toast(`${prev.c.g} ${prev.c.lab} を「${target}」から削除`);
+  if(btn){ const t=btn.textContent; btn.textContent='削除しました';
+    setTimeout(()=>{ btn.textContent=t; },1200); }
+}
 function renderPrev(){
   if(!prev){ el('prev').innerHTML=
     `<div class="sc" style="color:var(--mute)">1本目を計測すると、ここに直前のケースが出ます</div>`; return; }
@@ -745,12 +767,14 @@ function renderPrev(){
     +`<div class="sc">${prev.s.trim()}</div>`
     +(prev.z?`<div class="zsol">ZBLS (${prev.z.slot}): ${prev.z.sol}</div>`:'')
     +`</div><div class="tm">${fmt(prev.ms)}</div>`
-    +`<div class="add"><select id="ptarget" title="追加先"></select>`
-    +`<button class="addbtn" id="padd" type="button">★ プリセットに追加</button></div>`;
+    +`<div class="add"><select id="ptarget" title="追加先 / 削除元"></select>`
+    +`<button class="addbtn" id="padd" type="button">★ 追加</button>`
+    +`<button class="addbtn del" id="pdel" type="button">✕ 削除</button></div>`;
   renderTargets();
   el('ptarget').onchange=e=>{ target=e.target.value;
     if(target==='__new__'){} };
   el('padd').onclick=e=>addPrevToPreset(e.currentTarget);
+  el('pdel').onclick=e=>removePrevFromPreset(e.currentTarget);
 }
 
 /* ---- 画面 / 操作 ---- */
