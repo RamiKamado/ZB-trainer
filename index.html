@@ -71,6 +71,31 @@ h1 em{font-style:normal;color:var(--y)}
  flex:1;min-width:140px;word-break:break-word}
 .zedit .cur b{color:var(--fg)}
 .scr .zs{display:block;color:var(--mute);font-size:11px;margin-top:4px}
+.statwrap{flex:1;max-width:1100px;margin:0 auto;width:100%;padding:0 16px 40px}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:9px;margin-top:12px}
+.sumbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.sumbox .v{font-size:19px;font-weight:650;font-variant-numeric:tabular-nums}
+.sumbox .k{color:var(--mute);font-size:10.5px;letter-spacing:.06em;margin-top:2px}
+.strow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #23252f}
+.strow:last-child{border-bottom:0}
+.strow .nmx{flex:1;min-width:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.strow .nx{color:var(--mute);font-size:11.5px;font-variant-numeric:tabular-nums;width:46px;text-align:right}
+.strow .av{font-variant-numeric:tabular-nums;font-size:14px;font-weight:650;width:58px;text-align:right}
+.strow .bar{width:64px;height:5px;border-radius:3px;background:#23252f;overflow:hidden;flex:none}
+.strow .bar i{display:block;height:100%}
+.stgrp{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.stghead{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;user-select:none}
+.stghead .gname{font-size:14px;font-weight:650;flex:1}
+.stgrp .body{display:none;padding:0 10px 10px}
+.stgrp.open .body{display:block}
+.stsub{border-top:1px solid var(--line);padding:6px 2px}
+.stsub>.h{display:flex;align-items:center;gap:10px;padding:4px 8px;cursor:pointer}
+.stsub>.h .cpn{font-family:ui-monospace,Menlo,monospace;font-size:12px;letter-spacing:.08em;flex:1;color:var(--mute)}
+.stsub .cases{display:none;padding:2px 0 6px}
+.stsub.open .cases{display:block}
+.strow .fig{width:26px;height:26px;flex:none}
+.strow .fig svg{width:26px;height:26px;display:block}
+.sect2{color:var(--mute);font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin:18px 0 4px}
 .toast{position:fixed;left:50%;bottom:86px;transform:translate(-50%,14px);background:var(--y);
  color:#14151c;font-weight:650;font-size:13px;padding:8px 16px;border-radius:999px;
  opacity:0;pointer-events:none;transition:.16s;z-index:60}
@@ -210,6 +235,7 @@ h1 em{font-style:normal;color:var(--y)}
     <span class="n"><b id="nsel">0</b> / 480 ケース</span>
     <button class="mini" id="selall" type="button">全選択</button>
     <button class="mini" id="selnone" type="button">全解除</button>
+    <button class="mini" id="statopen" type="button">統計</button>
     <button class="go" id="go" type="button">練習へ進む</button>
   </div></div>
 </div>
@@ -244,6 +270,17 @@ h1 em{font-style:normal;color:var(--y)}
     </div>
     <div class="prev" id="prev"></div>
   </div>
+</div>
+<div class="screen" id="scr-stat">
+  <div class="head">
+    <div style="display:flex;align-items:center;gap:9px">
+      <button class="mini" id="statback" type="button">← ケース選択</button>
+      <button class="mini" id="statreset" type="button" style="margin-left:auto">記録を消去</button>
+    </div>
+    <h1 style="margin-top:10px">統計</h1>
+    <p class="sub">タイムの色は 0 秒に近いほど緑、10 秒に近いほど赤、10 秒以上は赤で表示します。</p>
+  </div>
+  <div class="statwrap" id="statbody"></div>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -409,6 +446,22 @@ function saveSel(){ save('zbll-practice-sel', idsToKeys(sel)); }
 /* presets: [{name, keys:[...]}] */
 let presets=load('zbll-practice-presets',[]);
 let lastPreset=load('zbll-practice-lastpreset',null);
+/* 累積記録: {zbll:{key:{n,s,b,w,r:[]}}, zbls:{idx:{...}}} */
+let stats=load('zbll-practice-stats',{zbll:{},zbls:{}});
+if(!stats.zbll) stats={zbll:{},zbls:{}};
+function saveStats(){ save('zbll-practice-stats',stats); }
+function recordTime(ms, c, zi){
+  const put=(tbl,key)=>{
+    const e=tbl[key]||(tbl[key]={n:0,s:0,b:null,w:null,r:[]});
+    e.n++; e.s+=ms;
+    if(e.b===null||ms<e.b) e.b=ms;
+    if(e.w===null||ms>e.w) e.w=ms;
+    e.r.push(Math.round(ms)); if(e.r.length>12) e.r.shift();
+  };
+  put(stats.zbll, CKEY(c));
+  if(zi!==null && zi!==undefined) put(stats.zbls, String(zi));
+  saveStats();
+}
 let zOn=load('zbll-zbls-on',false);
 let zSel=new Set(load('zbll-zbls-cases',[]));
 let zSlots=new Set(load('zbll-zbls-slots',[0]));
@@ -685,6 +738,7 @@ function stop(){
   cancelAnimationFrame(raf); state='idle';
   const ms=performance.now()-t0; el('tval').textContent=fmt(ms);
   times.push({ms, c:cur});
+  recordTime(ms, cur, curZ?curZ.idx:null);
   prev={c:cur, s:curScramble, ms, z:curZ};
   newScramble(); renderPrev(); renderStats();
 }
@@ -792,14 +846,140 @@ function renderPrev(){
   el('pdel').onclick=e=>removePrevFromPreset(e.currentTarget);
 }
 
+/* ---- 統計 ---- */
+const fmt2=ms=>(ms/1000).toFixed(2);
+/* 0 秒 = 緑, 10 秒 = 赤, それ以上は赤 */
+function tcol(ms){
+  const t=Math.max(0,Math.min(10,ms/1000));
+  return `hsl(${Math.round(120*(1-t/10))} 85% 58%)`;
+}
+function agg(list){
+  let n=0,s=0,b=null,w=null;
+  for(const e of list){ if(!e) continue; n+=e.n; s+=e.s;
+    if(e.b!==null&&(b===null||e.b<b)) b=e.b;
+    if(e.w!==null&&(w===null||e.w>w)) w=e.w; }
+  return {n,s,b,w,avg:n?s/n:null};
+}
+function statRow(label, a, opts){
+  const o=opts||{};
+  const d=document.createElement('div'); d.className='strow';
+  if(o.fig) d.innerHTML=`<div class="fig">${o.fig}</div>`;
+  const col=a.avg===null?'var(--mute)':tcol(a.avg);
+  const pct=a.avg===null?0:Math.max(4,Math.min(100,(a.avg/1000)/10*100));
+  d.innerHTML+=`<div class="nmx">${label}</div>`
+    +`<div class="bar"><i style="width:${pct}%;background:${col}"></i></div>`
+    +`<div class="nx">${a.n||'-'}</div>`
+    +`<div class="av" style="color:${col}">${a.avg===null?'—':fmt2(a.avg)}</div>`;
+  return d;
+}
+function renderStats(){
+  const box=el('statbody'); box.innerHTML='';
+  const all=Object.values(stats.zbll);
+  const A=agg(all);
+  const everyTime=[];
+  for(const e of all) everyTime.push(...e.r);
+  const recent=everyTime.slice(-12);
+  const aoN=n=>{ if(recent.length<n) return null;
+    const a=recent.slice(-n).sort((x,y)=>x-y).slice(1,-1);
+    return a.reduce((s,x)=>s+x,0)/a.length; };
+  const tried=all.filter(e=>e.n>0).length;
+  const sum=[['総ソルブ',A.n],['合計時間',A.n?(A.s/1000/60).toFixed(1)+'分':'—'],
+    ['全体平均',A.avg===null?'—':fmt2(A.avg)],['ベスト',A.b===null?'—':fmt2(A.b)],
+    ['ワースト',A.w===null?'—':fmt2(A.w)],
+    ['練習済みケース',tried+' / '+CASES.length]];
+  const g=document.createElement('div'); g.className='sumgrid';
+  sum.forEach(([k,v])=>{ const b=document.createElement('div'); b.className='sumbox';
+    b.innerHTML=`<div class="v">${v}</div><div class="k">${k}</div>`; g.appendChild(b); });
+  box.appendChild(g);
+  if(!A.n){ const p=document.createElement('p'); p.className='sub';
+    p.style.marginTop='16px'; p.textContent='まだ記録がありません。練習するとここに集計されます。';
+    box.appendChild(p); return; }
+
+  // --- ZBLL: グループ → CP → ケース ---
+  const h2=document.createElement('div'); h2.className='sect2'; h2.textContent='ZBLL'; box.appendChild(h2);
+  DATA.forEach(([gname,gkey,blocks])=>{
+    const ids=CASES.filter(c=>c.g===gname);
+    const ga=agg(ids.map(c=>stats.zbll[CKEY(c)]));
+    const sec=document.createElement('section'); sec.className='stgrp';
+    const head=document.createElement('div'); head.className='stghead';
+    const col=ga.avg===null?'var(--mute)':tcol(ga.avg);
+    head.innerHTML=`<span class="caret">▶</span><span class="gname">${gname}</span>`
+      +`<span class="nx">${ga.n||'-'}</span>`
+      +`<span class="av" style="color:${col}">${ga.avg===null?'—':fmt2(ga.avg)}</span>`;
+    head.onclick=()=>sec.classList.toggle('open');
+    sec.appendChild(head);
+    const bd=document.createElement('div'); bd.className='body';
+    blocks.forEach(([cp,cs])=>{
+      const sub=document.createElement('div'); sub.className='stsub';
+      const list=CASES.filter(c=>c.g===gname&&c.cp===cp);
+      const sa=agg(list.map(c=>stats.zbll[CKEY(c)]));
+      const sc=sa.avg===null?'var(--mute)':tcol(sa.avg);
+      const hh=document.createElement('div'); hh.className='h';
+      hh.innerHTML=`<span class="cpn">${cp}</span><span class="nx">${sa.n||'-'}</span>`
+        +`<span class="av" style="color:${sc}">${sa.avg===null?'—':fmt2(sa.avg)}</span>`;
+      hh.onclick=()=>sub.classList.toggle('open');
+      sub.appendChild(hh);
+      const cbox=document.createElement('div'); cbox.className='cases';
+      list.forEach(c=>{
+        const e=stats.zbll[CKEY(c)];
+        cbox.appendChild(statRow(c.lab, agg([e]), {fig:planSvg(c.fd)}));
+      });
+      sub.appendChild(cbox); bd.appendChild(sub);
+    });
+    sec.appendChild(bd); box.appendChild(sec);
+  });
+
+  // --- 苦手ケース ---
+  const slow=CASES.map(c=>({c,e:stats.zbll[CKEY(c)]})).filter(x=>x.e&&x.e.n>0)
+    .sort((a,b)=>b.e.s/b.e.n - a.e.s/a.e.n).slice(0,10);
+  if(slow.length){
+    const t=document.createElement('div'); t.className='sect2'; t.textContent='平均が遅いケース 上位10';
+    box.appendChild(t);
+    const w=document.createElement('div'); w.className='stgrp'; const b2=document.createElement('div');
+    b2.style.padding='4px 10px';
+    slow.forEach(x=>b2.appendChild(statRow(`${x.c.g} / ${x.c.cp} / ${x.c.lab}`, agg([x.e]), {fig:planSvg(x.c.fd)})));
+    w.appendChild(b2); box.appendChild(w);
+  }
+
+  // --- ZBLS ---
+  const zEntries=Object.entries(stats.zbls).filter(([k,e])=>e.n>0);
+  if(zEntries.length){
+    const t=document.createElement('div'); t.className='sect2'; t.textContent='ZBLS（F2L ケース別）';
+    box.appendChild(t);
+    const byG=new Map();
+    zEntries.forEach(([k,e])=>{ const i=+k; if(!ZBLS[i]) return;
+      const g=ZBLS[i][0]; if(!byG.has(g)) byG.set(g,[]); byG.get(g).push([i,e]); });
+    [...byG.keys()].sort((a,b)=>a-b).forEach(gi=>{
+      const rows=byG.get(gi);
+      const ga=agg(rows.map(r=>r[1]));
+      const sec=document.createElement('section'); sec.className='stgrp';
+      const col=ga.avg===null?'var(--mute)':tcol(ga.avg);
+      const head=document.createElement('div'); head.className='stghead';
+      head.innerHTML=`<span class="caret">▶</span>`
+        +`<span class="gname">F2L ${ZGROUPS[gi][0]}</span>`
+        +`<span class="nx">${ga.n}</span><span class="av" style="color:${col}">${fmt2(ga.avg)}</span>`;
+      head.onclick=()=>sec.classList.toggle('open');
+      const bd=document.createElement('div'); bd.className='body';
+      rows.sort((a,b)=>b[1].s/b[1].n-a[1].s/a[1].n).forEach(([i,e])=>
+        bd.appendChild(statRow('', agg([e]), {fig:obliqueSvg(ZBLS[i][1])})));
+      sec.appendChild(head); sec.appendChild(bd); box.appendChild(sec);
+    });
+  }
+}
+
 /* ---- 画面 / 操作 ---- */
 let revealed=false;
 function show(s){ el('scr-sel').classList.toggle('on',s==='sel');
-  el('scr-run').classList.toggle('on',s==='run'); window.scrollTo(0,0); }
+  el('scr-run').classList.toggle('on',s==='run');
+  el('scr-stat').classList.toggle('on',s==='stat'); window.scrollTo(0,0); }
 el('go').onclick=()=>{ buildQueue(); times=[]; prev=null; state='idle';
   el('timer').className='timer'; el('tval').textContent='0.00';
   renderPrev(); newScramble(); renderStats(); show('run'); };
 el('back').onclick=()=>show('sel');
+el('statopen').onclick=()=>{ renderStats(); show('stat'); };
+el('statback').onclick=()=>show('sel');
+el('statreset').onclick=()=>{ if(confirm('これまでのタイム記録をすべて消去しますか？')){
+  stats={zbll:{},zbls:{}}; saveStats(); renderStats(); toast('記録を消去しました'); } };
 el('selall').onclick=()=>{ CASES.forEach(c=>sel.add(c.id)); sync(); };
 el('selnone').onclick=()=>{ sel.clear(); sync(); };
 el('mode').onclick=e=>{ const b=e.target.closest('button'); if(!b)return;
