@@ -872,7 +872,7 @@ function statRow(label, a, opts){
     +`<div class="av" style="color:${col}">${a.avg===null?'—':fmt2(a.avg)}</div>`;
   return d;
 }
-function renderStats(){
+function renderStatScreen(){
   const box=el('statbody'); box.innerHTML='';
   const all=Object.values(stats.zbll);
   const A=agg(all);
@@ -976,10 +976,10 @@ el('go').onclick=()=>{ buildQueue(); times=[]; prev=null; state='idle';
   el('timer').className='timer'; el('tval').textContent='0.00';
   renderPrev(); newScramble(); renderStats(); show('run'); };
 el('back').onclick=()=>show('sel');
-el('statopen').onclick=()=>{ renderStats(); show('stat'); };
+el('statopen').onclick=()=>{ renderStatScreen(); show('stat'); };
 el('statback').onclick=()=>show('sel');
 el('statreset').onclick=()=>{ if(confirm('これまでのタイム記録をすべて消去しますか？')){
-  stats={zbll:{},zbls:{}}; saveStats(); renderStats(); toast('記録を消去しました'); } };
+  stats={zbll:{},zbls:{}}; saveStats(); renderStatScreen(); toast('記録を消去しました'); } };
 el('selall').onclick=()=>{ CASES.forEach(c=>sel.add(c.id)); sync(); };
 el('selnone').onclick=()=>{ sel.clear(); sync(); };
 el('mode').onclick=e=>{ const b=e.target.closest('button'); if(!b)return;
