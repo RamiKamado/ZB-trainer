@@ -51,6 +51,13 @@ h1 em{font-style:normal;color:var(--y)}
 .pitem .pn{font-size:13px;flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pitem .pc{color:var(--mute);font-size:11.5px;font-variant-numeric:tabular-nums}
 .pempty{color:var(--mute);font-size:12px;margin-top:8px}
+.imppanel{display:none;margin-top:10px;border:1px solid var(--y);border-radius:10px;
+ padding:10px 12px;background:#1f2030}
+.imppanel.on{display:block}
+.imppanel .t{font-size:12.5px;color:var(--fg);margin-bottom:8px;line-height:1.6}
+.imppanel label{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mute);
+ padding:3px 0;cursor:pointer}
+.imppanel input[type=checkbox]{accent-color:var(--y);width:15px;height:15px}
 .zsec{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 13px}
 .zhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .zhead .zt{font-size:15px;font-weight:650}
@@ -228,6 +235,24 @@ h1 em{font-style:normal;color:var(--y)}
       <div class="prow">
         <input id="pname" type="text" placeholder="名前（例: 苦手なSune）" maxlength="40">
         <button class="mini" id="psave" type="button">選択中を保存</button>
+      </div>
+      <div class="prow" style="margin-top:7px">
+        <button class="mini" id="pexport" type="button">書き出し</button>
+        <button class="mini" id="pimport" type="button">ファイルから読み込み</button>
+        <button class="mini" id="ppaste" type="button">貼り付けて読み込み</button>
+        <input type="file" id="pfile" accept=".json,application/json" style="display:none">
+      </div>
+      <div class="imppanel" id="imppanel">
+        <div class="t" id="impsum"></div>
+        <label><input type="checkbox" id="imp-presets" checked> プリセット</label>
+        <label><input type="checkbox" id="imp-custom" checked> 自作 ZBLS 手順</label>
+        <label><input type="checkbox" id="imp-stats" checked> 統計</label>
+        <label><input type="checkbox" id="imp-replace"> 統計を統合せず置き換える</label>
+        <label><input type="checkbox" id="imp-settings"> 選択状態・設定も取り込む</label>
+        <div class="prow" style="margin-top:8px">
+          <button class="mini" id="impgo" type="button">取り込む</button>
+          <button class="mini" id="impcancel" type="button">やめる</button>
+        </div>
       </div>
       <div class="plist" id="plist"></div>
       <div class="pempty" id="pempty"></div>
@@ -589,6 +614,164 @@ function canStart(){
   if(zOn && (!zSel.size || !zSlots.size)) return false;
   return true;
 }
+const EXPORT_VER=2;
+function exportData(){
+  return JSON.stringify({
+    app:'zbll-practice', version:EXPORT_VER, exportedAt:new Date().toISOString(),
+    presets, lastPreset,
+    zblsCustom:zCustom,
+    stats,
+    settings:{
+      selection: idsToKeys(sel),
+      zbls:{ on:zOn, cases:[...zSel], slots:[...zSlots] }
+    }
+  }, null, 1);
+}
+function doExport(){
+  const text=exportData();
+  const name='zbll-practice-'+new Date().toISOString().slice(0,10)+'.json';
+  try{
+    const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+    const a=document.createElement('a'); a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    toast('書き出しました');
+  }catch(e){
+    if(navigator.clipboard) navigator.clipboard.writeText(text)
+      .then(()=>toast('クリップボードにコピーしました'))
+      .catch(()=>toast('書き出せませんでした'));
+    else toast('書き出せませんでした');
+  }
+}
+
+/* ---- 取り込み: まず中身を調べてから、何を入れるか選んでもらう ---- */
+let pending=null;
+function inspect(text){
+  let o;
+  try{ o=JSON.parse(text); }catch(e){ return {err:'JSON として読めませんでした'}; }
+  if(Array.isArray(o)) o={presets:o};
+  if(!o || typeof o!=='object') return {err:'中身を読み取れませんでした'};
+  const out={presets:[], custom:{}, stats:null, settings:null, dropped:0, algBad:0};
+  if(Array.isArray(o.presets)){
+    for(const p of o.presets){
+      if(!p || typeof p.name!=='string' || !Array.isArray(p.keys)){ out.dropped++; continue; }
+      const keys=[...new Set(p.keys.filter(k=>BYKEY.has(k)))];
+      out.dropped+=p.keys.length-keys.length;
+      if(keys.length) out.presets.push({name:p.name.trim().slice(0,40)||'名前なし', keys});
+    }
+  }
+  const zc=o.zblsCustom;
+  if(zc && typeof zc==='object'){
+    for(const [k,v] of Object.entries(zc)){
+      const i=+k;
+      if(!ZBLS[i] || !Array.isArray(v) || v.length!==2){ out.algBad++; continue; }
+      const [setups,sols]=v;
+      if(!Array.isArray(setups)||!Array.isArray(sols)||setups.length!==3||sols.length!==3){ out.algBad++; continue; }
+      let ok=true;
+      for(let s=0;s<3;s++){
+        const t1=normTokens(setups[s]), t2=normTokens(sols[s]);
+        if(!t1||!t2){ ok=false; break; }
+        const st=applySeq(t1);
+        if(zblsSolved(st) || !zblsSolved(applySeq(t2, st))){ ok=false; break; }
+      }
+      if(ok) out.custom[i]=[setups,sols]; else out.algBad++;
+    }
+  }
+  const st=o.stats;
+  const okEntry=e=>e && typeof e.n==='number' && typeof e.s==='number';
+  if(st && typeof st==='object'){
+    const zb={}, zs={};
+    if(st.zbll) for(const [k,e] of Object.entries(st.zbll)) if(BYKEY.has(k)&&okEntry(e)) zb[k]=e;
+    if(st.zbls) for(const [k,e] of Object.entries(st.zbls)) if(ZBLS[+k]&&okEntry(e)) zs[k]=e;
+    if(Object.keys(zb).length||Object.keys(zs).length) out.stats={zbll:zb, zbls:zs};
+  }
+  const se=o.settings;
+  if(se && typeof se==='object'){
+    const s2={};
+    if(Array.isArray(se.selection)) s2.selection=se.selection.filter(k=>BYKEY.has(k));
+    if(se.zbls && typeof se.zbls==='object'){
+      s2.zbls={ on: !!se.zbls.on,
+        cases: Array.isArray(se.zbls.cases)?se.zbls.cases.filter(i=>ZBLS[i]):[],
+        slots: Array.isArray(se.zbls.slots)?se.zbls.slots.filter(i=>i>=0&&i<3):[] };
+    }
+    if(typeof o.lastPreset==='string') s2.lastPreset=o.lastPreset;
+    if(Object.keys(s2).length) out.settings=s2;
+  }
+  if(!out.presets.length && !Object.keys(out.custom).length && !out.stats && !out.settings)
+    return {err:'取り込めるデータが見つかりませんでした'};
+  return out;
+}
+function mergeStatTable(dst, src, replace){
+  for(const [k,e] of Object.entries(src)){
+    if(replace || !dst[k]){ dst[k]={n:e.n, s:e.s, b:e.b??null, w:e.w??null,
+      r:Array.isArray(e.r)?e.r.slice(-12):[]}; continue; }
+    const d=dst[k];
+    d.n+=e.n; d.s+=e.s;
+    if(e.b!=null && (d.b==null||e.b<d.b)) d.b=e.b;
+    if(e.w!=null && (d.w==null||e.w>d.w)) d.w=e.w;
+    if(Array.isArray(e.r)) d.r=d.r.concat(e.r).slice(-12);
+  }
+}
+function applyImport(data, opt){
+  const res={presets:0, merged:0, custom:0, statCases:0, settings:false};
+  if(opt.presets) for(const p of data.presets){
+    const ex=presets.find(x=>x.name===p.name);
+    if(ex){ const b=ex.keys.length; ex.keys=[...new Set(ex.keys.concat(p.keys))];
+      if(ex.keys.length!==b) res.merged++; }
+    else { presets.push(p); res.presets++; }
+  }
+  if(opt.custom) for(const [i,v] of Object.entries(data.custom)){ zCustom[i]=v; res.custom++; }
+  if(opt.stats && data.stats){
+    if(opt.replace) stats={zbll:{}, zbls:{}};
+    mergeStatTable(stats.zbll, data.stats.zbll, opt.replace);
+    mergeStatTable(stats.zbls, data.stats.zbls, opt.replace);
+    res.statCases=Object.keys(data.stats.zbll).length+Object.keys(data.stats.zbls).length;
+  }
+  if(opt.settings && data.settings){
+    const s2=data.settings;
+    if(s2.selection) sel=new Set(keysToIds(s2.selection));
+    if(s2.zbls){ zOn=s2.zbls.on; zSel=new Set(s2.zbls.cases); zSlots=new Set(s2.zbls.slots); }
+    if(s2.lastPreset) lastPreset=s2.lastPreset;
+    res.settings=true;
+  }
+  savePresets(); saveZ(); saveSel(); saveStats(); sync(); syncZ();
+  return res;
+}
+function showImport(text){
+  const d=inspect(text);
+  if(d.err){ alert(d.err); return; }
+  pending=d;
+  const nStat=d.stats?Object.keys(d.stats.zbll).length+Object.keys(d.stats.zbls).length:0;
+  const parts=[`プリセット ${d.presets.length} 件`,
+    `自作 ZBLS 手順 ${Object.keys(d.custom).length} 件`,
+    `統計 ${nStat} ケース分`,
+    d.settings?'選択状態・設定あり':'選択状態・設定なし'];
+  if(d.dropped) parts.push(`無効なケース ${d.dropped} 件は除外`);
+  if(d.algBad) parts.push(`検証に通らない手順 ${d.algBad} 件は除外`);
+  el('impsum').textContent='このファイルの中身: '+parts.join(' / ');
+  el('imp-presets').disabled=!d.presets.length;
+  el('imp-custom').disabled=!Object.keys(d.custom).length;
+  el('imp-stats').disabled=!d.stats;
+  el('imp-replace').disabled=!d.stats;
+  el('imp-settings').disabled=!d.settings;
+  ['imp-presets','imp-custom','imp-stats'].forEach(i=>{ if(el(i).disabled) el(i).checked=false; });
+  el('imppanel').classList.add('on');
+}
+function runImport(){
+  if(!pending) return;
+  const opt={presets:el('imp-presets').checked, custom:el('imp-custom').checked,
+    stats:el('imp-stats').checked, replace:el('imp-replace').checked,
+    settings:el('imp-settings').checked};
+  const r=applyImport(pending, opt);
+  pending=null; el('imppanel').classList.remove('on');
+  const msg=[];
+  if(r.presets) msg.push(`プリセット ${r.presets} 件追加`);
+  if(r.merged) msg.push(`${r.merged} 件に統合`);
+  if(r.custom) msg.push(`手順 ${r.custom} 件`);
+  if(r.statCases) msg.push(`統計 ${r.statCases} ケース`);
+  if(r.settings) msg.push('設定を復元');
+  toast(msg.length?msg.join(' / '):'取り込むものを選んでください');
+}
 function renderPresets(){
   const box=el('plist'); box.innerHTML='';
   presets.forEach((p,i)=>{
@@ -607,6 +790,21 @@ function renderPresets(){
   el('pempty').textContent = presets.length ? '' :
     'まだありません。ケースを選んで名前を付けて保存すると、次回から呼び出せます。';
 }
+el('pexport').onclick=doExport;
+el('pimport').onclick=()=>el('pfile').click();
+el('pfile').onchange=e=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ showImport(String(r.result)); e.target.value=''; };
+  r.onerror=()=>{ alert('ファイルを読めませんでした'); e.target.value=''; };
+  r.readAsText(f);
+};
+el('ppaste').onclick=()=>{
+  const t=window.prompt('書き出した JSON を貼り付けてください');
+  if(t && t.trim()) showImport(t);
+};
+el('impgo').onclick=runImport;
+el('impcancel').onclick=()=>{ pending=null; el('imppanel').classList.remove('on'); };
 el('psave').onclick=()=>{
   const name=(el('pname').value||'').trim();
   if(!name) return toast('名前を入力してください');
