@@ -571,29 +571,32 @@ function makeSolver(P, SOLVED){
     const seq=new Int8Array(32);
     const seq2=new Int8Array(24);
 
-    function dfs2(cp,ud,ss,lim,prev,out){
+    /* loose: フェーズ 1 の最後の手とつながる 1 手目だけは、
+       同じ面だけを禁止する（可換な面の並べ替えまでは縛らない） */
+    function dfs2(cp,ud,ss,lim,prev,out,loose){
       if(lim===0) return (cp===0&&ud===0&&ss===t.gSS);
       if(tick()) return false;
       for(let mi=0;mi<10;mi++){
         const m=P2[mi], f=FACE(m);
         if(prev>=0){ const pf=FACE(prev);
           if(f===pf) continue;
-          if(f%3===pf%3 && f<pf) continue; }
+          if(!loose && f%3===pf%3 && f<pf) continue; }
         const ncp=t.cpM[cp*10+mi], nud=t.udM[ud*10+mi], nss=t.ssM[ss*10+mi];
         if(Math.max(t.pr2a[ncp*24+nss],t.pr2b[nud*24+nss])>lim-1) continue;
         seq2[out.n++]=m;
-        if(dfs2(ncp,nud,nss,lim-1,m,out)) return true;
+        if(dfs2(ncp,nud,nss,lim-1,m,out,false)) return true;
         out.n--;
       }
       return false;
     }
-    function runPhase2(c, used){
+    function runPhase2(c, used, prevMove){
       const cp=getCP(c), ud=getUD(c), ss=getSS(c);
       const cap=Math.min(P2CAP, bestLen-1-used);
       const lo=Math.max(t.pr2a[cp*24+ss],t.pr2b[ud*24+ss]);
       for(let lim=lo; lim<=cap; lim++){
         const out={n:0};
-        if(dfs2(cp,ud,ss,lim,-9,out)) return Array.from(seq2.slice(0,out.n));
+        if(dfs2(cp,ud,ss,lim,prevMove===undefined?-9:prevMove,out,true))
+          return Array.from(seq2.slice(0,out.n));
         if(stop) break;
       }
       return null;
@@ -602,7 +605,7 @@ function makeSolver(P, SOLVED){
       if(lim===0){
         if(tw===0&&fl===0&&sl===t.gSlice){
           let c=c0; for(let i=0;i<depth;i++) c=mult(c,MC[seq[i]]);
-          const r=runPhase2(c,depth);
+          const r=runPhase2(c,depth, depth?seq[depth-1]:-9);
           if(r && depth+r.length<bestLen){
             best=Array.from(seq.slice(0,depth)).concat(r); bestLen=best.length;
           }
@@ -655,11 +658,14 @@ function singleScramble(scr){
   let sol=null;
   try{ sol=SOLVER.solve(target, {good:13, maxLen:22, ms:300}); }catch(e){ return null; }
   if(!sol || !sol.length) return null;
-  const out=invSeq(sol);
-  /* 念のため、同じ状態になることを確かめてから採用する */
+  /* 同じ面が続く並び（R2 R' など）が残らないよう、最後にもう一度約分する */
+  const str=reduce(invSeq(sol).join(' '));
+  const out=normTokens(str);
+  if(!out || !out.length) return null;
+  /* 同じ状態になることを確かめてから採用する */
   if(applySeq(out).join('')!==target.join('')) return null;
   if(out.length>=tk.length) return null;
-  return out.join(' ');
+  return str;
 }
 
 /* ---- ZBLS 斜視図（VisualCube 3D と同じポリゴン座標） ---- */
