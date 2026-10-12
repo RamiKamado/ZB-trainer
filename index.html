@@ -73,20 +73,34 @@ h1 em{font-style:normal;color:var(--y)}
 .zgname{display:flex;align-items:center;gap:9px;color:var(--mute);font-size:11.5px;margin-bottom:6px}
 .zgname svg{width:34px;height:34px;flex:none;display:block}
 .zgname .gt2{font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}
-.zcases{display:grid;grid-template-columns:repeat(auto-fill,minmax(56px,1fr));gap:6px}
-.zc{background:#181a23;border:1px solid var(--line);border-radius:8px;padding:4px 2px 3px;cursor:pointer}
-.zc svg{width:100%;aspect-ratio:1;height:auto;display:block;opacity:.45}
-.zc .lb{font-size:8.5px;color:var(--mute);text-align:center;margin-top:1px}
-.zc[aria-pressed=true]{border-color:var(--y);background:#221f04}
-.zc[aria-pressed=true] svg{opacity:1}
-.zc[aria-pressed=true] .lb{color:var(--y)}
-.zc .lb{min-height:11px}
-.zc.custom{border-color:#6f7ae0}
-.zc.custom .lb{color:#98a2ff}
-.zedit{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:8px}
-.zedit .cur{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--mute);
- flex:1;min-width:140px;word-break:break-word}
-.zedit .cur b{color:var(--fg)}
+.zcases{display:flex;flex-direction:column;gap:5px}
+.zcase{display:flex;align-items:center;gap:7px;background:#181a23;border:1px solid var(--line);
+ border-radius:9px;padding:5px 7px;min-width:0}
+.zcase[aria-selected=true]{border-color:var(--y);background:#221f04}
+.zcase .pickbox{flex:1;display:flex;align-items:center;gap:8px;min-width:0;padding:2px 0;
+ background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.zcase .zno{flex:none;width:13px;text-align:right;font-family:ui-monospace,Menlo,monospace;
+ font-size:10.5px;color:var(--mute)}
+.zcase[aria-selected=true] .zno{color:var(--y)}
+.zcase .zfig{flex:none;line-height:0}
+.zcase .zfig svg{width:34px;height:34px;display:block;opacity:.5}
+.zcase[aria-selected=true] .zfig svg{opacity:1}
+.zcase .zalg{flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:11px;
+ color:var(--mute);line-height:1.45;overflow-wrap:anywhere}
+.zcase[aria-selected=true] .zalg{color:var(--fg)}
+.zcase .zalg .tagc{color:#98a2ff;font-family:inherit}
+.ebtn{flex:none;background:none;border:1px solid var(--line);color:var(--mute);
+ border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
+.ebtn:hover{border-color:var(--y);color:var(--y)}
+.zform{margin:5px 0 2px;background:#12131a;border:1px solid var(--y);border-radius:9px;padding:9px 10px}
+.zform .hint{color:var(--mute);font-size:11px;margin-bottom:6px;line-height:1.55}
+.zform input,.zform textarea{width:100%;background:#0e0f15;border:1px solid var(--line);
+ color:var(--fg);border-radius:7px;padding:7px 8px;
+ font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5}
+.zform textarea{min-height:132px;resize:vertical}
+.zform .fr{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.zform .err{color:#ff6b6b;font-size:11.5px;margin-top:7px;line-height:1.6;white-space:pre-wrap}
+.zform .okmsg{color:var(--ok);font-size:11.5px;margin-top:7px;line-height:1.6;white-space:pre-wrap}
 .scr .zs{display:block;color:var(--mute);font-size:11px;margin-top:4px}
 .statwrap{flex:1;max-width:1100px;margin:0 auto;width:100%;padding:0 16px 40px}
 .sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:9px;margin-top:12px}
@@ -591,50 +605,130 @@ function buildZbls(){
     all.onclick=()=>{ const ids=groups.get(g); const on=ids.every(x=>zSel.has(x));
       ids.forEach(x=>on?zSel.delete(x):zSel.add(x)); syncZ(); };
     h4.appendChild(all); d.appendChild(h4);
+    const ids=groups.get(g);
+    const host=document.createElement('div'); host.dataset.bulk=g;
+    const bulk=document.createElement('button'); bulk.className='mini'; bulk.type='button';
+    bulk.textContent='まとめて入力'; bulk.style.marginLeft='6px';
+    bulk.onclick=()=>bulkZ(g, ids, host);
+    h4.appendChild(bulk);
     const grid=document.createElement('div'); grid.className='zcases';
-    groups.get(g).forEach(i=>{
-      const b=document.createElement('button'); b.className='zc'; b.type='button'; b.dataset.z=i;
-      b.innerHTML=obliqueSvg(ZBLS[i][1])+`<div class="lb" data-e="${i}"></div>`;
-      b.onclick=()=>{ zSel.has(i)?zSel.delete(i):zSel.add(i); syncZ(); };
-      b.oncontextmenu=e=>{ e.preventDefault(); editZ(i); };
-      grid.appendChild(b);
+    ids.forEach((i,n)=>{
+      const wrap=document.createElement('div'); wrap.dataset.w=i;
+      const row=document.createElement('div'); row.className='zcase'; row.dataset.z=i;
+      const pick=document.createElement('button'); pick.className='pickbox'; pick.type='button';
+      pick.innerHTML=`<span class="zno">${n+1}</span>`
+        +`<span class="zfig">${obliqueSvg(ZBLS[i][1])}</span>`
+        +`<span class="zalg"></span>`;
+      pick.onclick=()=>{ zSel.has(i)?zSel.delete(i):zSel.add(i); syncZ(); };
+      const eb=document.createElement('button'); eb.className='ebtn'; eb.type='button';
+      eb.textContent='編集'; eb.onclick=()=>editZ(i, wrap);
+      row.appendChild(pick); row.appendChild(eb);
+      wrap.appendChild(row); grid.appendChild(wrap);
     });
-    d.appendChild(grid);
-    const ed=document.createElement('div'); ed.className='zedit';
-    const cur=document.createElement('div'); cur.className='cur'; cur.dataset.g=g;
-    const pickBtn=document.createElement('button'); pickBtn.className='mini'; pickBtn.type='button';
-    pickBtn.textContent='手順を編集';
-    pickBtn.onclick=()=>{ const ids=groups.get(g).filter(x=>zSel.has(x));
-      const t=ids.length?ids[0]:groups.get(g)[0]; editZ(t); };
-    ed.appendChild(cur); ed.appendChild(pickBtn);
-    d.appendChild(ed); body.appendChild(d);
+    d.appendChild(grid); d.appendChild(host); body.appendChild(d);
   });
 }
-function editZ(i){
-  const cur=zSols(i)[0];
-  const t=window.prompt(`ZBLS 手順（FRスロット）\n空欄にすると初期値に戻ります`, cur);
-  if(t===null) return;
-  if(!t.trim()){ resetCustom(i); syncZ(); toast('初期の手順に戻しました'); return; }
-  const r=applyCustom(i,t);
-  if(r.err){ alert(r.err); return; }
-  syncZ(); toast('手順を保存しました');
+/* 貼り付けた複数行を、どのケースを解くかで自動的に振り分ける。
+   行の順番に依存しないので、手元の一覧をそのまま貼れる。 */
+function matchCase(ids, text){
+  const tk=normTokens(text);
+  if(!tk) return {err:'記号を解釈できませんでした'};
+  const face=derotate(tk,true);
+  if(!face) return {err:'この手順は扱えません'};
+  const hit=ids.filter(i=>{
+    const st=applySeq(normTokens(ZBLS[i][2][0]));
+    return zblsSolved(applySeq(face, st.slice()));
+  });
+  if(!hit.length) return {err:'このグループのどのケースも解けていません'};
+  return {i:hit[0], many:hit.length>1};
+}
+function applyBulk(ids, text){
+  const res={ok:0, reset:0, skip:0, errs:[], used:new Set()};
+  String(text).split('\n').forEach((raw,n)=>{
+    const line=raw.trim();
+    if(!line){ res.skip++; return; }
+    if(line==='-'){ res.reset++; return; }
+    const m=matchCase(ids, line);
+    if(m.err){ res.errs.push(`${n+1}行目「${line}」: ${m.err}`); return; }
+    if(res.used.has(m.i)){
+      res.errs.push(`${n+1}行目「${line}」: すでに同じケースへ割り当て済みです`); return; }
+    const r=applyCustom(m.i, line);
+    if(r.err){ res.errs.push(`${n+1}行目「${line}」: ${r.err}`); return; }
+    res.used.add(m.i); res.ok++;
+  });
+  return res;
+}
+
+let openForm=null;
+function closeForm(){ if(openForm){ openForm.remove(); openForm=null; } }
+function mkForm(hint){
+  closeForm();
+  const f=document.createElement('div'); f.className='zform';
+  const h=document.createElement('div'); h.className='hint'; h.innerHTML=hint;
+  f.appendChild(h); openForm=f; return f;
+}
+function mkBtn(label, fn, cls){
+  const b=document.createElement('button'); b.className=cls||'ebtn'; b.type='button';
+  b.textContent=label; b.onclick=fn; return b;
+}
+/* 1 ケース分の手順を編集する */
+function editZ(i, wrap){
+  const f=mkForm('このケースを解く手順を入力してください（FR スロット基準）。'
+    +'<br>BR / FL スロット用と、スクランブル用の逆手順は自動で作られます。');
+  const inp=document.createElement('input'); inp.type='text'; inp.value=zSols(i)[0];
+  const err=document.createElement('div'); err.className='err';
+  const fr=document.createElement('div'); fr.className='fr';
+  fr.appendChild(mkBtn('保存',()=>{
+    const t=(inp.value||'').trim();
+    if(!t){ err.textContent='手順が空です'; return; }
+    const r=applyCustom(i,t);
+    if(r.err){ err.textContent=r.err; return; }
+    closeForm(); syncZ(); toast('手順を保存しました');
+  }));
+  fr.appendChild(mkBtn('標準に戻す',()=>{
+    resetCustom(i); closeForm(); syncZ(); toast('標準の手順に戻しました');
+  }));
+  fr.appendChild(mkBtn('やめる',()=>closeForm()));
+  f.appendChild(inp); f.appendChild(fr); f.appendChild(err);
+  (wrap||el('zbody')).appendChild(f);
+  if(inp.focus) inp.focus();
+}
+/* グループ内の全ケースをまとめて入力する */
+function bulkZ(g, ids, host){
+  const no=ZGROUPS[g][0];
+  const f=mkForm(`<b>${no===null?'その他':'F2L '+no}</b> の ${ids.length} ケース分の手順を、1 行に 1 つ貼り付けてください。`
+    +'<br>どのケースの手順かは自動で判定するので、順番は問いません。'
+    +'<br>空行は変更しません。<code>-</code> だけの行はそのケースを標準に戻します。');
+  const ta=document.createElement('textarea');
+  ta.value=ids.map(i=>zSols(i)[0]).join('\n');
+  const err=document.createElement('div'); err.className='err';
+  const ok=document.createElement('div'); ok.className='okmsg';
+  const fr=document.createElement('div'); fr.className='fr';
+  fr.appendChild(mkBtn('取り込む',()=>{
+    const r=applyBulk(ids, ta.value);
+    err.textContent=r.errs.join('\n');
+    ok.textContent=r.ok||r.reset
+      ? `${r.ok} 件を登録${r.reset?`、${r.reset} 件を標準に戻しました`:'しました'}`
+      : '';
+    syncZ();
+    if(!r.errs.length){ closeForm(); toast(`${r.ok} 件の手順を登録しました`); }
+  }));
+  fr.appendChild(mkBtn('このグループを標準に戻す',()=>{
+    ids.forEach(i=>resetCustom(i)); closeForm(); syncZ(); toast('標準の手順に戻しました');
+  }));
+  fr.appendChild(mkBtn('やめる',()=>closeForm()));
+  f.appendChild(ta); f.appendChild(fr); f.appendChild(ok); f.appendChild(err);
+  (host||el('zbody')).appendChild(f);
 }
 function syncZ(){
   el('zon').setAttribute('aria-pressed',zOn);
   el('zsec').classList.toggle('open', el('zsec').dataset.open==='1');
   document.querySelectorAll('.sw[data-k]').forEach(b=>b.setAttribute('aria-pressed',zSlots.has(+b.dataset.k)));
-  document.querySelectorAll('.zc').forEach(b=>{
+  document.querySelectorAll('.zcase').forEach(b=>{
     const i=+b.dataset.z;
-    b.setAttribute('aria-pressed',zSel.has(i));
-    b.classList.toggle('custom', !!zCustom[i]);
-    const lb=b.querySelector('.lb'); if(lb) lb.textContent=zCustom[i]?'自':'';
-  });
-  document.querySelectorAll('.zedit .cur').forEach(el2=>{
-    const g=+el2.dataset.g;
-    const ids=ZBLS.map((c,i)=>i).filter(i=>ZBLS[i][0]===g);
-    const sel2=ids.filter(i=>zSel.has(i));
-    const t=sel2.length?sel2[0]:ids[0];
-    el2.innerHTML=`<b>${zCustom[t]?'自作':'標準'}</b> ${zSols(t)[0]}`;
+    b.setAttribute('aria-selected', zSel.has(i));
+    const a=b.querySelector('.zalg');
+    if(a) a.innerHTML=(zCustom[i]?'<span class="tagc">自作</span> ':'')+zSols(i)[0];
   });
   el('zn').textContent = zOn ? `${zSel.size} / ${ZBLS.length} ケース · スロット ${zSlots.size}`
                              : 'OFF（ZBLLのみ）';
