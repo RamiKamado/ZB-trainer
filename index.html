@@ -58,6 +58,13 @@ h1 em{font-style:normal;color:var(--y)}
 .imppanel label{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--mute);
  padding:3px 0;cursor:pointer}
 .imppanel input[type=checkbox]{accent-color:var(--y);width:15px;height:15px}
+#ptype{margin-top:2px}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{flex:1;min-width:0;background:none;border:0;color:var(--mute);padding:9px 4px;
+ font-size:12.5px;cursor:pointer;line-height:1.25;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--y);color:#14151c;font-weight:650}
 .zsec{margin-top:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:12px 13px}
 .zhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .zhead .zt{font-size:15px;font-weight:650}
@@ -126,6 +133,7 @@ h1 em{font-style:normal;color:var(--y)}
 .stsub.open .cases{display:block}
 .strow .fig{width:26px;height:26px;flex:none}
 .strow .fig svg{width:26px;height:26px;display:block}
+.strow .fig2{width:auto;display:flex;gap:3px}
 .sect2{color:var(--mute);font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin:18px 0 4px}
 .toast{position:fixed;left:50%;bottom:86px;transform:translate(-50%,14px);background:var(--y);
  color:#14151c;font-weight:650;font-size:13px;padding:8px 16px;border-radius:999px;
@@ -225,6 +233,7 @@ h1 em{font-style:normal;color:var(--y)}
 .prev .addbtn:disabled{opacity:.4;cursor:default}
 .done{text-align:center;color:var(--ok);font-size:14px}
 @media (max-width:700px){
+  .seg button{font-size:11.5px;padding:8px 2px}
   .topbar{padding:8px 10px;gap:6px 5px}
   .topbar .icon{padding:5px 8px;font-size:11.5px}
   .modes{flex:1 0 100%;margin-left:0}
@@ -253,6 +262,11 @@ h1 em{font-style:normal;color:var(--y)}
   </div>
   <div class="sel-body">
     <div class="pset">
+      <div class="t">練習する範囲</div>
+      <div class="seg" id="ptype"></div>
+      <div class="pempty" id="pinfo"></div>
+    </div>
+    <div class="pset" style="margin-top:14px">
       <div class="t">プリセット</div>
       <div class="prow">
         <input id="pname" type="text" placeholder="名前（例: 苦手なSune）" maxlength="40">
@@ -282,7 +296,6 @@ h1 em{font-style:normal;color:var(--y)}
     <div class="zsec" id="zsec">
       <div class="zhead">
         <span class="zt">ZBLS</span>
-        <button class="sw" id="zon" type="button" aria-pressed="false">ZBLSから練習する</button>
         <button class="mini" id="ztoggle" type="button">ケース一覧</button>
         <span class="zn" id="zn"></span>
       </div>
@@ -442,6 +455,213 @@ function zblsSolved(st){
   return true;
 }
 
+/* ---- 2 フェーズソルバー（ZBLL と ZBLS を 1 本のスクランブルにまとめる） ---- */
+function makeSolver(P, SOLVED){
+  const MV=[]; for(const f of 'URFDLB') for(const s of ['','2',"'"]) MV.push(f+s);
+  const FACE=i=>(i/3)|0;                       /* 手の番号 -> 面の番号 */
+  const P2=[0,1,2, 4, 7, 9,10,11, 13, 16];     /* U,U2,U', R2, F2, D,D2,D', L2, B2 */
+  const CORNER=[[8,9,20],[6,18,38],[0,36,47],[2,45,11],
+                [29,26,15],[27,44,24],[33,53,42],[35,17,51]];
+  const EDGE=[[5,10],[7,19],[3,37],[1,46],[32,16],[28,25],[30,43],[34,52],
+              [23,12],[21,41],[50,39],[48,14]];
+  const sortStr=a=>a.slice().sort().join('');
+  const cIdx=new Map(CORNER.map((t,i)=>[sortStr(t.map(f=>SOLVED[f])),i]));
+  const eIdx=new Map(EDGE.map((t,i)=>[sortStr(t.map(f=>SOLVED[f])),i]));
+  function toCubie(st){
+    const cp=[],co=[],ep=[],eo=[];
+    for(let i=0;i<8;i++){ const cols=CORNER[i].map(f=>st[f]);
+      cp[i]=cIdx.get(sortStr(cols)); co[i]=cols.findIndex(c=>c==='U'||c==='D'); }
+    for(let i=0;i<12;i++){ const cols=EDGE[i].map(f=>st[f]);
+      ep[i]=eIdx.get(sortStr(cols));
+      let k=cols.findIndex(c=>c==='U'||c==='D');
+      if(k<0) k=cols.findIndex(c=>c==='F'||c==='B');
+      eo[i]=k; }
+    return {cp,co,ep,eo};
+  }
+  const SOL=SOLVED.split('');
+  const MC=MV.map(m=>toCubie(P[m].map(i=>SOL[i])));
+  function mult(a,b){
+    const cp=new Array(8),co=new Array(8),ep=new Array(12),eo=new Array(12);
+    for(let i=0;i<8;i++){ cp[i]=a.cp[b.cp[i]]; co[i]=(a.co[b.cp[i]]+b.co[i])%3; }
+    for(let i=0;i<12;i++){ ep[i]=a.ep[b.ep[i]]; eo[i]=(a.eo[b.ep[i]]+b.eo[i])%2; }
+    return {cp,co,ep,eo};
+  }
+  const NS=495;
+  const Cnk=(n,k)=>{ if(k<0||k>n) return 0; let r=1;
+    for(let i=0;i<k;i++) r=r*(n-i)/(i+1); return Math.round(r); };
+  const getTwist=c=>{ let v=0; for(let i=0;i<7;i++) v=v*3+c.co[i]; return v; };
+  const getFlip =c=>{ let v=0; for(let i=0;i<11;i++) v=v*2+c.eo[i]; return v; };
+  function getSlice(c){ let s=0,k=3;
+    for(let i=11;i>=0&&k>=0;i--) if(c.ep[i]>=8){ s+=Cnk(i,k+1); k--; }
+    return s; }
+  function permIdx(a){ const n=a.length; let v=0;
+    for(let i=n-1;i>0;i--){ let s=0; for(let j=0;j<i;j++) if(a[j]>a[i]) s++; v=(v+s)*i; }
+    return v; }
+  const getCP=c=>permIdx(c.cp);
+  const getUD=c=>permIdx(c.ep.slice(0,8));
+  const getSS=c=>permIdx(c.ep.slice(8,12).map(x=>x-8));
+
+  /* 座標の遷移表を、代表状態を広げながら作る */
+  function coordTable(N, get, moves){
+    /* CP / UD は 40319 まであるので Uint16Array（Int16 だと溢れる） */
+    const w=moves.length, tab=new Uint16Array(N*w).fill(65535);
+    const rep=new Array(N); const s0=toCubie(SOL); rep[get(s0)]=s0;
+    let fr=[get(s0)];
+    while(fr.length){
+      const nx=[];
+      for(const x of fr){ const s=rep[x];
+        for(let mi=0;mi<w;mi++){
+          const s2=mult(s,MC[moves[mi]]), y=get(s2);
+          tab[x*w+mi]=y;
+          if(rep[y]===undefined){ rep[y]=s2; nx.push(y); }
+        } }
+      fr=nx;
+    }
+    return tab;
+  }
+  const ALL18=[...Array(18).keys()];
+  let T=null;
+  function build(){
+    if(T) return T;
+    const twistM=coordTable(2187,getTwist,ALL18);
+    const flipM =coordTable(2048,getFlip ,ALL18);
+    const sliceM=coordTable(NS  ,getSlice,ALL18);
+    const cpM=coordTable(40320,getCP,P2);
+    const udM=coordTable(40320,getUD,P2);
+    const ssM=coordTable(24   ,getSS,P2);
+    const S0=toCubie(SOL);
+    const gSlice=getSlice(S0), gSS=getSS(S0);
+    /* 枝刈り表（解けた座標からの BFS） */
+    function prune(na, nb, ma, mb, moves, ga, gb){
+      const w=moves.length, N=na*nb, d=new Uint8Array(N).fill(255);
+      const start=ga*nb+gb; d[start]=0;
+      let fr=[start], depth=0;
+      while(fr.length){
+        const nx=[];
+        for(const x of fr){ const a=(x/nb)|0, b=x%nb;
+          for(let mi=0;mi<w;mi++){
+            const y=ma[a*w+mi]*nb+mb[b*w+mi];
+            if(d[y]===255){ d[y]=depth+1; nx.push(y); }
+          } }
+        fr=nx; depth++;
+      }
+      return d;
+    }
+    const pr1a=prune(2187,NS,twistM,sliceM,ALL18,0,gSlice);
+    const pr1b=prune(2048,NS,flipM ,sliceM,ALL18,0,gSlice);
+    const pr2a=prune(40320,24,cpM,ssM,P2,0,gSS);
+    const pr2b=prune(40320,24,udM,ssM,P2,0,gSS);
+    T={twistM,flipM,sliceM,cpM,udM,ssM,pr1a,pr1b,pr2a,pr2b,gSlice,gSS};
+    return T;
+  }
+
+  /* 面ステッカー状態 st を解く手順を返す（見つからなければ null） */
+  function solve(st, opt){
+    opt=opt||{};
+    const good   = opt.good   === undefined ? 16  : opt.good;
+    const maxLen = opt.maxLen === undefined ? 22  : opt.maxLen;
+    const ms     = opt.ms     === undefined ? 120 : opt.ms;
+    const P2CAP  = opt.p2cap  === undefined ? 13  : opt.p2cap;
+    const t=build();
+    const c0=toCubie(st);
+    const t0=Date.now();
+    let nodes=0, stop=false;
+    const tick=()=>{ if((++nodes & 2047)===0 && Date.now()-t0>ms) stop=true; return stop; };
+    let best=null, bestLen=maxLen+1;
+    const seq=new Int8Array(32);
+    const seq2=new Int8Array(24);
+
+    function dfs2(cp,ud,ss,lim,prev,out){
+      if(lim===0) return (cp===0&&ud===0&&ss===t.gSS);
+      if(tick()) return false;
+      for(let mi=0;mi<10;mi++){
+        const m=P2[mi], f=FACE(m);
+        if(prev>=0){ const pf=FACE(prev);
+          if(f===pf) continue;
+          if(f%3===pf%3 && f<pf) continue; }
+        const ncp=t.cpM[cp*10+mi], nud=t.udM[ud*10+mi], nss=t.ssM[ss*10+mi];
+        if(Math.max(t.pr2a[ncp*24+nss],t.pr2b[nud*24+nss])>lim-1) continue;
+        seq2[out.n++]=m;
+        if(dfs2(ncp,nud,nss,lim-1,m,out)) return true;
+        out.n--;
+      }
+      return false;
+    }
+    function runPhase2(c, used){
+      const cp=getCP(c), ud=getUD(c), ss=getSS(c);
+      const cap=Math.min(P2CAP, bestLen-1-used);
+      const lo=Math.max(t.pr2a[cp*24+ss],t.pr2b[ud*24+ss]);
+      for(let lim=lo; lim<=cap; lim++){
+        const out={n:0};
+        if(dfs2(cp,ud,ss,lim,-9,out)) return Array.from(seq2.slice(0,out.n));
+        if(stop) break;
+      }
+      return null;
+    }
+    function dfs1(tw,fl,sl,lim,prev,depth){
+      if(lim===0){
+        if(tw===0&&fl===0&&sl===t.gSlice){
+          let c=c0; for(let i=0;i<depth;i++) c=mult(c,MC[seq[i]]);
+          const r=runPhase2(c,depth);
+          if(r && depth+r.length<bestLen){
+            best=Array.from(seq.slice(0,depth)).concat(r); bestLen=best.length;
+          }
+        }
+        return;
+      }
+      if(tick()) return;
+      for(let m=0;m<18;m++){
+        const f=FACE(m);
+        if(prev>=0){ const pf=FACE(prev);
+          if(f===pf) continue;
+          if(f%3===pf%3 && f<pf) continue; }
+        const ntw=t.twistM[tw*18+m], nfl=t.flipM[fl*18+m], nsl=t.sliceM[sl*18+m];
+        if(Math.max(t.pr1a[ntw*NS+nsl],t.pr1b[nfl*NS+nsl])>lim-1) continue;
+        seq[depth]=m;
+        dfs1(ntw,nfl,nsl,lim-1,m,depth+1);
+        if(stop||bestLen<=good) return;
+      }
+    }
+    const tw=getTwist(c0), fl=getFlip(c0), sl=getSlice(c0);
+    for(let lim=Math.max(t.pr1a[tw*NS+sl],t.pr1b[fl*NS+sl]); lim<=12; lim++){
+      dfs1(tw,fl,sl,lim,-9,0);
+      if(stop||bestLen<=good) break;
+    }
+    return best ? best.map(m=>MV[m]) : null;
+  }
+  return {build, solve, MV, toCubie};
+}
+const SOLVER=makeSolver(P, SOLVEDS);
+let solverState='idle';                 /* idle | ready | failed */
+const needSolver=()=>practice!=='zbll';
+function buildSolver(){
+  if(solverState!=='idle') return solverState==='ready';
+  try{
+    SOLVER.build();
+    /* 初回の探索は JIT が温まっておらず遅いので、ここで数回空回しする */
+    const warm=["R U R' U' F' U F","R U2 R' F R F' U2 R U R'","F R U R' U' F' R U R' U' R U R' U' R U R'"];
+    for(const w of warm){ const t=normTokens(w); if(t) SOLVER.solve(applySeq(t),{good:0,ms:60}); }
+    solverState='ready';
+  }
+  catch(e){ solverState='failed'; }
+  return solverState==='ready';
+}
+/* 連結したスクランブルと同じ状態になる、より短い 1 本を探す。
+   見つからなければ null（呼び出し側は連結版をそのまま使う）。 */
+function singleScramble(scr){
+  if(solverState!=='ready') return null;
+  const tk=normTokens(scr); if(!tk) return null;
+  const target=applySeq(tk);
+  let sol=null;
+  try{ sol=SOLVER.solve(target, {good:13, maxLen:22, ms:300}); }catch(e){ return null; }
+  if(!sol || !sol.length) return null;
+  const out=invSeq(sol);
+  /* 念のため、同じ状態になることを確かめてから採用する */
+  if(applySeq(out).join('')!==target.join('')) return null;
+  if(out.length>=tk.length) return null;
+  return out.join(' ');
+}
+
 /* ---- ZBLS 斜視図（VisualCube 3D と同じポリゴン座標） ---- */
 const GREY='#404040';
 function obliqueSvg(face27){
@@ -517,22 +737,93 @@ function save(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} 
 let sel=new Set(keysToIds(load('zbll-practice-sel',[])));
 function saveSel(){ save('zbll-practice-sel', idsToKeys(sel)); }
 
-/* presets: [{name, keys:[...]}] */
+/* ZBLS ケースの安定キー。並び順が変わっても保存データがずれないよう、
+   見た目（27 マス）そのものを鍵にする。299 ケースすべてで一意。 */
+const ZKEY=i=>ZBLS[i][1];
+const ZBYKEY=new Map(ZBLS.map((c,i)=>[c[1],i]));
+const zIdsToKeys=ids=>[...ids].map(i=>ZKEY(i)).filter(Boolean);
+const zKeysToIds=ks=>ks.map(k=>ZBYKEY.get(k)).filter(i=>i!==undefined);
+/* 旧データ（添字で保存されていたもの）をキーに直す */
+function zMigrate(list){
+  return [...list].map(v=>typeof v==='number' ? ZKEY(v) : v).filter(k=>ZBYKEY.has(k));
+}
+
+/* presets: [{name, keys:[...], zkeys:[...]}] */
 let presets=load('zbll-practice-presets',[]);
+presets.forEach(p=>{ if(p && Array.isArray(p.zkeys)) p.zkeys=zMigrate(p.zkeys); });
 let lastPreset=load('zbll-practice-lastpreset',null);
-/* 累積記録: {zbll:{key:{n,s,b,w,r:[]}}, zbls:{idx:{...}}} */
 let slowSec=load('zbll-practice-slowsec',5);
 let slowOn=load('zbll-practice-slowon',false);
 let metric='avg';                       /* 統計画面の表示切り替え: avg | r5 */
+/* 練習の種類。ZBLL のみ / ZBLS から ZBLL まで / ZBLS のみ */
+const PRACTICE=[['zbll','ZBLLのみ'],['both','ZBLS→ZBLL'],['zbls','ZBLSのみ']];
+let practice=load('zbll-practice-type',null);
+if(!PRACTICE.some(p=>p[0]===practice)) practice=load('zbll-zbls-on',false)?'both':'zbll';
 /* 直近 5 回の平均。5 回に満たなければある分だけで計算する。 */
 function recent5(e){
   if(!e || !Array.isArray(e.r) || !e.r.length) return null;
   const a=e.r.slice(-5);
   return a.reduce((s,x)=>s+x,0)/a.length;
 }
-let stats=load('zbll-practice-stats',{zbll:{},zbls:{}});
-if(!stats.zbll) stats={zbll:{},zbls:{}};
+/* 累積記録は練習の種類ごとに分ける。
+   {byMode:{zbll:{zbll:{},zbls:{}}, both:{...}, zbls:{...}}, legacy:{zbll:{},zbls:{}}}
+   legacy は種類を分ける前の記録（どの種類か判別できないのでまとめて保管）。 */
+const emptyBucket=()=>({zbll:{},zbls:{},combo:{}});
+/* ZBLS→ZBLL は「どの ZBLS から入って、どの ZBLL が出たか」の組で集計する */
+const COMBO=(zi,c)=>ZKEY(zi)+'@'+CKEY(c);
+const comboParts=k=>{ const i=k.indexOf('@');
+  return i<0?null:[k.slice(0,i), k.slice(i+1)]; };
+function normStats(o){
+  const s={byMode:{}, legacy:emptyBucket()};
+  PRACTICE.forEach(([k])=>{ s.byMode[k]=emptyBucket(); });
+  if(!o || typeof o!=='object') return s;
+  if(o.byMode && typeof o.byMode==='object'){
+    PRACTICE.forEach(([k])=>{
+      const b=o.byMode[k];
+      if(b && typeof b==='object'){
+        if(b.zbll) s.byMode[k].zbll=b.zbll;
+        if(b.zbls) s.byMode[k].zbls=b.zbls;
+        if(b.combo) s.byMode[k].combo=b.combo;
+      }
+    });
+    if(o.legacy && typeof o.legacy==='object'){
+      if(o.legacy.zbll) s.legacy.zbll=o.legacy.zbll;
+      if(o.legacy.zbls) s.legacy.zbls=o.legacy.zbls;
+    }
+  } else if(o.zbll || o.zbls){
+    /* 種類を分ける前の形式 */
+    s.legacy.zbll=o.zbll||{};
+    s.legacy.zbls={};
+    for(const [k,e] of Object.entries(o.zbls||{})){
+      const key=/^\d+$/.test(k) && ZBLS[+k] ? ZKEY(+k) : k;
+      s.legacy.zbls[key]=e;
+    }
+  }
+  /* ZBLS 側の添字キーを安定キーに直す */
+  const fix=t=>{ const o2={};
+    for(const [k,e] of Object.entries(t)) o2[/^\d+$/.test(k)&&ZBLS[+k]?ZKEY(+k):k]=e;
+    return o2; };
+  PRACTICE.forEach(([k])=>{ s.byMode[k].zbls=fix(s.byMode[k].zbls); });
+  s.legacy.zbls=fix(s.legacy.zbls);
+  /* 複合で集計する前の both の記録は、組に戻せないので「以前の記録」へ移す */
+  const b2=s.byMode.both;
+  if(b2 && (Object.keys(b2.zbll).length||Object.keys(b2.zbls).length)){
+    const mv=(dst,src)=>{ for(const [k,e] of Object.entries(src)){
+      const d=dst[k];
+      if(!d){ dst[k]={n:e.n,s:e.s,b:e.b??null,w:e.w??null,r:(e.r||[]).slice(-12)}; continue; }
+      d.n+=e.n; d.s+=e.s;
+      if(e.b!=null&&(d.b==null||e.b<d.b)) d.b=e.b;
+      if(e.w!=null&&(d.w==null||e.w>d.w)) d.w=e.w;
+      d.r=(d.r||[]).concat(e.r||[]).slice(-12);
+    } };
+    mv(s.legacy.zbll,b2.zbll); mv(s.legacy.zbls,b2.zbls);
+    b2.zbll={}; b2.zbls={};
+  }
+  return s;
+}
+let stats=normStats(load('zbll-practice-stats',null));
 function saveStats(){ save('zbll-practice-stats',stats); }
+const bucket=m=>stats.byMode[m||practice];
 function recordTime(ms, c, zi){
   const put=(tbl,key)=>{
     const e=tbl[key]||(tbl[key]={n:0,s:0,b:null,w:null,r:[]});
@@ -541,18 +832,29 @@ function recordTime(ms, c, zi){
     if(e.w===null||ms>e.w) e.w=ms;
     e.r.push(Math.round(ms)); if(e.r.length>12) e.r.shift();
   };
-  put(stats.zbll, CKEY(c));
-  if(zi!==null && zi!==undefined) put(stats.zbls, String(zi));
+  const b=bucket();
+  const hasZ = zi!==null && zi!==undefined;
+  if(practice==='both'){
+    /* ZBLS と ZBLL をひと続きで解くので、組み合わせ単位で記録する */
+    if(c && hasZ) put(b.combo, COMBO(zi,c));
+  } else if(practice==='zbls'){
+    if(hasZ) put(b.zbls, ZKEY(zi));
+  } else if(c) put(b.zbll, CKEY(c));
   saveStats();
 }
-let zOn=load('zbll-zbls-on',false);
-let zSel=new Set(load('zbll-zbls-cases',[]));
+let zSel=new Set(zKeysToIds(zMigrate(load('zbll-zbls-cases',[]))));
 let zSlots=new Set(load('zbll-zbls-slots',[0]));
-let zCustom=load('zbll-zbls-custom',{});      /* {caseIndex: [[setups],[sols]]} */
-function saveZ(){ save('zbll-zbls-on',zOn); save('zbll-zbls-cases',[...zSel]);
+/* {ZBLSキー: [[setups],[sols]]} */
+let zCustom=(()=>{ const o=load('zbll-zbls-custom',{}), out={};
+  for(const [k,v] of Object.entries(o||{})){
+    const key=/^\d+$/.test(k) && ZBLS[+k] ? ZKEY(+k) : k;
+    if(ZBYKEY.has(key)) out[key]=v;
+  }
+  return out; })();
+function saveZ(){ save('zbll-practice-type',practice); save('zbll-zbls-cases',zIdsToKeys(zSel));
   save('zbll-zbls-slots',[...zSlots]); save('zbll-zbls-custom',zCustom); }
-const zSetups=i=>zCustom[i]?zCustom[i][0]:ZBLS[i][2];
-const zSols  =i=>zCustom[i]?zCustom[i][1]:ZBLS[i][3];
+const zSetups=i=>zCustom[ZKEY(i)]?zCustom[ZKEY(i)][0]:ZBLS[i][2];
+const zSols  =i=>zCustom[ZKEY(i)]?zCustom[ZKEY(i)][1]:ZBLS[i][3];
 
 /* ユーザーが入力した手順を検証して、3スロット分のセットアップと手順に変換する */
 function applyCustom(i, text){
@@ -571,10 +873,10 @@ function applyCustom(i, text){
     setups.push(reduce(invSeq(f).join(' ')));
     sols.push(d.join(' '));
   }
-  zCustom[i]=[setups,sols]; saveZ();
+  zCustom[ZKEY(i)]=[setups,sols]; saveZ();
   return {ok:sols[0]};
 }
-function resetCustom(i){ delete zCustom[i]; saveZ(); }
+function resetCustom(i){ delete zCustom[ZKEY(i)]; saveZ(); }
 function savePresets(){ save('zbll-practice-presets',presets); save('zbll-practice-lastpreset',lastPreset);
   renderPresets(); renderTargets(); }
 
@@ -721,7 +1023,6 @@ function bulkZ(g, ids, host){
   (host||el('zbody')).appendChild(f);
 }
 function syncZ(){
-  el('zon').setAttribute('aria-pressed',zOn);
   el('zsec').classList.toggle('open', el('zsec').dataset.open==='1');
   document.querySelectorAll('.sw[data-k]').forEach(b=>b.setAttribute('aria-pressed',zSlots.has(+b.dataset.k)));
   document.querySelectorAll('.zcase').forEach(b=>{
@@ -730,14 +1031,22 @@ function syncZ(){
     const a=b.querySelector('.zalg');
     if(a) a.innerHTML=(zCustom[i]?'<span class="tagc">自作</span> ':'')+zSols(i)[0];
   });
-  el('zn').textContent = zOn ? `${zSel.size} / ${ZBLS.length} ケース · スロット ${zSlots.size}`
-                             : 'OFF（ZBLLのみ）';
+  el('zn').textContent = practice==='zbll'
+    ? '使いません（ZBLLのみ）'
+    : `${zSel.size} / ${ZBLS.length} ケース · スロット ${zSlots.size}`;
+  document.querySelectorAll('#ptype button').forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.p===practice));
+  const pi=el('pinfo');
+  if(pi) pi.textContent =
+    practice==='zbll' ? 'ZBLL のスクランブルだけを出題します。'
+  : practice==='both' ? 'ZBLS を崩した状態から出題します。ZBLS を解くと、選んだ ZBLL ケースが出ます。'
+  : 'ZBLS だけを練習します。続く ZBLL は 480 ケースから無作為に選ばれ、記録もとりません。';
   saveZ(); if(typeof sync==='function') el('go').disabled = !canStart();
 }
 function canStart(){
-  if(!sel.size) return false;
+  if(practice!=='zbls' && !sel.size) return false;
+  if(practice!=='zbll' && (!zSel.size || !zSlots.size)) return false;
   if(slowOn && !slowPool().length) return false;
-  if(zOn && (!zSel.size || !zSlots.size)) return false;
   return true;
 }
 const EXPORT_VER=2;
@@ -748,8 +1057,9 @@ function exportData(){
     zblsCustom:zCustom,
     stats,
     settings:{
+      practice,
       selection: idsToKeys(sel),
-      zbls:{ on:zOn, cases:[...zSel], slots:[...zSlots] }
+      zbls:{ cases: zIdsToKeys(zSel), slots:[...zSlots] }
     }
   }, null, 1);
 }
@@ -783,14 +1093,23 @@ function inspect(text){
       if(!p || typeof p.name!=='string' || !Array.isArray(p.keys)){ out.dropped++; continue; }
       const keys=[...new Set(p.keys.filter(k=>BYKEY.has(k)))];
       out.dropped+=p.keys.length-keys.length;
-      if(keys.length) out.presets.push({name:p.name.trim().slice(0,40)||'名前なし', keys});
+      let zkeys=null;
+      if(Array.isArray(p.zkeys)){
+        zkeys=[...new Set(zMigrate(p.zkeys))];
+        out.dropped+=p.zkeys.length-zkeys.length;
+      }
+      if(keys.length||(zkeys&&zkeys.length)){
+        const q={name:p.name.trim().slice(0,40)||'名前なし', keys};
+        if(zkeys) q.zkeys=zkeys;
+        out.presets.push(q);
+      }
     }
   }
   const zc=o.zblsCustom;
   if(zc && typeof zc==='object'){
-    for(const [k,v] of Object.entries(zc)){
-      const i=+k;
-      if(!ZBLS[i] || !Array.isArray(v) || v.length!==2){ out.algBad++; continue; }
+    for(const [k0,v] of Object.entries(zc)){
+      const key=/^\d+$/.test(k0) && ZBLS[+k0] ? ZKEY(+k0) : k0;
+      if(!ZBYKEY.has(key) || !Array.isArray(v) || v.length!==2){ out.algBad++; continue; }
       const [setups,sols]=v;
       if(!Array.isArray(setups)||!Array.isArray(sols)||setups.length!==3||sols.length!==3){ out.algBad++; continue; }
       let ok=true;
@@ -800,24 +1119,42 @@ function inspect(text){
         const st=applySeq(t1);
         if(zblsSolved(st) || !zblsSolved(applySeq(t2, st))){ ok=false; break; }
       }
-      if(ok) out.custom[i]=[setups,sols]; else out.algBad++;
+      if(ok) out.custom[key]=[setups,sols]; else out.algBad++;
     }
   }
-  const st=o.stats;
   const okEntry=e=>e && typeof e.n==='number' && typeof e.s==='number';
-  if(st && typeof st==='object'){
-    const zb={}, zs={};
-    if(st.zbll) for(const [k,e] of Object.entries(st.zbll)) if(BYKEY.has(k)&&okEntry(e)) zb[k]=e;
-    if(st.zbls) for(const [k,e] of Object.entries(st.zbls)) if(ZBLS[+k]&&okEntry(e)) zs[k]=e;
-    if(Object.keys(zb).length||Object.keys(zs).length) out.stats={zbll:zb, zbls:zs};
+  function cleanBucket(b){
+    const zb={}, zs={}, cb={};
+    if(b && typeof b==='object'){
+      if(b.zbll) for(const [k,e] of Object.entries(b.zbll)) if(BYKEY.has(k)&&okEntry(e)) zb[k]=e;
+      if(b.zbls) for(const [k0,e] of Object.entries(b.zbls)){
+        const key=/^\d+$/.test(k0)&&ZBLS[+k0]?ZKEY(+k0):k0;
+        if(ZBYKEY.has(key)&&okEntry(e)) zs[key]=e;
+      }
+      if(b.combo) for(const [k,e] of Object.entries(b.combo)){
+        const p=comboParts(k);
+        if(p && ZBYKEY.has(p[0]) && BYKEY.has(p[1]) && okEntry(e)) cb[k]=e;
+      }
+    }
+    return (Object.keys(zb).length||Object.keys(zs).length||Object.keys(cb).length)
+      ? {zbll:zb, zbls:zs, combo:cb} : null;
+  }
+  if(o.stats && typeof o.stats==='object'){
+    const s=normStats(o.stats), got={byMode:{}, legacy:null};
+    let any=false;
+    PRACTICE.forEach(([k])=>{ const b=cleanBucket(s.byMode[k]); if(b){ got.byMode[k]=b; any=true; } });
+    const lg=cleanBucket(s.legacy); if(lg){ got.legacy=lg; any=true; }
+    if(any) out.stats=got;
   }
   const se=o.settings;
   if(se && typeof se==='object'){
     const s2={};
     if(Array.isArray(se.selection)) s2.selection=se.selection.filter(k=>BYKEY.has(k));
+    if(PRACTICE.some(p=>p[0]===se.practice)) s2.practice=se.practice;
+    else if(se.zbls && typeof se.zbls.on==='boolean') s2.practice=se.zbls.on?'both':'zbll';
     if(se.zbls && typeof se.zbls==='object'){
-      s2.zbls={ on: !!se.zbls.on,
-        cases: Array.isArray(se.zbls.cases)?se.zbls.cases.filter(i=>ZBLS[i]):[],
+      s2.zbls={
+        cases: Array.isArray(se.zbls.cases)?zMigrate(se.zbls.cases):[],
         slots: Array.isArray(se.zbls.slots)?se.zbls.slots.filter(i=>i>=0&&i<3):[] };
     }
     if(typeof o.lastPreset==='string') s2.lastPreset=o.lastPreset;
@@ -842,21 +1179,38 @@ function applyImport(data, opt){
   const res={presets:0, merged:0, custom:0, statCases:0, settings:false};
   if(opt.presets) for(const p of data.presets){
     const ex=presets.find(x=>x.name===p.name);
-    if(ex){ const b=ex.keys.length; ex.keys=[...new Set(ex.keys.concat(p.keys))];
-      if(ex.keys.length!==b) res.merged++; }
+    if(ex){
+      const b=ex.keys.length+(ex.zkeys?ex.zkeys.length:0);
+      ex.keys=[...new Set(ex.keys.concat(p.keys))];
+      if(p.zkeys) ex.zkeys=[...new Set((ex.zkeys||[]).concat(p.zkeys))];
+      if(ex.keys.length+(ex.zkeys?ex.zkeys.length:0)!==b) res.merged++;
+    }
     else { presets.push(p); res.presets++; }
   }
-  if(opt.custom) for(const [i,v] of Object.entries(data.custom)){ zCustom[i]=v; res.custom++; }
+  if(opt.custom) for(const [k,v] of Object.entries(data.custom)){ zCustom[k]=v; res.custom++; }
   if(opt.stats && data.stats){
-    if(opt.replace) stats={zbll:{}, zbls:{}};
-    mergeStatTable(stats.zbll, data.stats.zbll, opt.replace);
-    mergeStatTable(stats.zbls, data.stats.zbls, opt.replace);
-    res.statCases=Object.keys(data.stats.zbll).length+Object.keys(data.stats.zbls).length;
+    if(opt.replace) stats=normStats(null);
+    let n=0;
+    PRACTICE.forEach(([k])=>{
+      const b=data.stats.byMode[k]; if(!b) return;
+      mergeStatTable(stats.byMode[k].zbll, b.zbll, opt.replace);
+      mergeStatTable(stats.byMode[k].zbls, b.zbls, opt.replace);
+      mergeStatTable(stats.byMode[k].combo, b.combo||{}, opt.replace);
+      n+=Object.keys(b.zbll).length+Object.keys(b.zbls).length
+        +Object.keys(b.combo||{}).length;
+    });
+    if(data.stats.legacy){
+      mergeStatTable(stats.legacy.zbll, data.stats.legacy.zbll, opt.replace);
+      mergeStatTable(stats.legacy.zbls, data.stats.legacy.zbls, opt.replace);
+      n+=Object.keys(data.stats.legacy.zbll).length+Object.keys(data.stats.legacy.zbls).length;
+    }
+    res.statCases=n;
   }
   if(opt.settings && data.settings){
     const s2=data.settings;
+    if(s2.practice) practice=s2.practice;
     if(s2.selection) sel=new Set(keysToIds(s2.selection));
-    if(s2.zbls){ zOn=s2.zbls.on; zSel=new Set(s2.zbls.cases); zSlots=new Set(s2.zbls.slots); }
+    if(s2.zbls){ zSel=new Set(zKeysToIds(s2.zbls.cases)); zSlots=new Set(s2.zbls.slots); }
     if(s2.lastPreset) lastPreset=s2.lastPreset;
     res.settings=true;
   }
@@ -867,7 +1221,14 @@ function showImport(text){
   const d=inspect(text);
   if(d.err){ alert(d.err); return; }
   pending=d;
-  const nStat=d.stats?Object.keys(d.stats.zbll).length+Object.keys(d.stats.zbls).length:0;
+  let nStat=0;
+  if(d.stats){
+    PRACTICE.forEach(([k])=>{ const b=d.stats.byMode[k];
+      if(b) nStat+=Object.keys(b.zbll).length+Object.keys(b.zbls).length
+        +Object.keys(b.combo||{}).length; });
+    if(d.stats.legacy) nStat+=Object.keys(d.stats.legacy.zbll).length
+      +Object.keys(d.stats.legacy.zbls).length;
+  }
   const parts=[`プリセット ${d.presets.length} 件`,
     `自作 ZBLS 手順 ${Object.keys(d.custom).length} 件`,
     `統計 ${nStat} ケース分`,
@@ -902,14 +1263,20 @@ function renderPresets(){
   const box=el('plist'); box.innerHTML='';
   presets.forEach((p,i)=>{
     const d=document.createElement('div'); d.className='pitem';
-    d.innerHTML=`<span class="pn">${p.name}</span><span class="pc">${p.keys.length} ケース</span>`;
+    const nz=p.zkeys?p.zkeys.length:0;
+    d.innerHTML=`<span class="pn">${p.name}</span>`
+      +`<span class="pc">ZBLL ${p.keys.length}${nz?` · ZBLS ${nz}`:''}</span>`;
     const mk=(txt,fn)=>{ const b=document.createElement('button');
       b.className='mini'; b.type='button'; b.textContent=txt; b.onclick=fn; d.appendChild(b); };
-    mk('読込',()=>{ sel=new Set(keysToIds(p.keys)); target=p.name; lastPreset=p.name;
-      sync(); toast(`「${p.name}」を読み込みました`); });
-    mk('追加',()=>{ keysToIds(p.keys).forEach(x=>sel.add(x)); sync(); toast('選択に追加しました'); });
-    mk('上書き',()=>{ if(!sel.size) return toast('ケースが選択されていません');
-      p.keys=idsToKeys(sel); savePresets(); toast('上書きしました'); });
+    mk('読込',()=>{ sel=new Set(keysToIds(p.keys));
+      if(p.zkeys) zSel=new Set(zKeysToIds(p.zkeys));
+      target=p.name; lastPreset=p.name;
+      sync(); syncZ(); toast(`「${p.name}」を読み込みました`); });
+    mk('追加',()=>{ keysToIds(p.keys).forEach(x=>sel.add(x));
+      if(p.zkeys) zKeysToIds(p.zkeys).forEach(x=>zSel.add(x));
+      sync(); syncZ(); toast('選択に追加しました'); });
+    mk('上書き',()=>{ if(!sel.size && !zSel.size) return toast('ケースが選択されていません');
+      p.keys=idsToKeys(sel); p.zkeys=zIdsToKeys(zSel); savePresets(); toast('上書きしました'); });
     mk('削除',()=>{ if(confirm(`「${p.name}」を削除しますか？`)){ presets.splice(i,1); savePresets(); } });
     box.appendChild(d);
   });
@@ -934,10 +1301,11 @@ el('impcancel').onclick=()=>{ pending=null; el('imppanel').classList.remove('on'
 el('psave').onclick=()=>{
   const name=(el('pname').value||'').trim();
   if(!name) return toast('名前を入力してください');
-  if(!sel.size) return toast('ケースが選択されていません');
+  if(!sel.size && !zSel.size) return toast('ケースが選択されていません');
   const ex=presets.find(p=>p.name===name);
-  if(ex){ if(!confirm(`「${name}」は既にあります。上書きしますか？`)) return; ex.keys=idsToKeys(sel); }
-  else presets.push({name, keys:idsToKeys(sel)});
+  if(ex){ if(!confirm(`「${name}」は既にあります。上書きしますか？`)) return;
+    ex.keys=idsToKeys(sel); ex.zkeys=zIdsToKeys(zSel); }
+  else presets.push({name, keys:idsToKeys(sel), zkeys:zIdsToKeys(zSel)});
   el('pname').value=''; savePresets(); toast(`「${name}」を保存しました`);
 };
 
@@ -980,13 +1348,19 @@ function buildSelection(){
   });
 }
 function syncSlow(){
-  const sl=selected();
-  const fresh=sl.filter(c=>recent5(stats.zbll[CKEY(c)])===null).length;
+  const sl=allUnits();
+  const b=bucket();
+  const fresh=unitIsZbls()
+    ? sl.filter(i=>recent5(b.zbls[ZKEY(i)])===null).length
+    : practice==='both'
+      ? sl.filter(c=>agg(comboRowsFor(c)).r5===null).length
+      : sl.filter(c=>recent5(b.zbll[CKEY(c)])===null).length;
   const n=slowPool().length;
+  const what=unitIsZbls()?'ZBLS':'ZBLL';
   el('slowon').setAttribute('aria-pressed', slowOn);
   if(el('slowtog')) el('slowtog').setAttribute('aria-pressed', slowOn);
   el('slowinfo').textContent=
-    `選択中 ${sl.length} 件のうち ${n} 件が対象です`
+    `${what} の選択中 ${sl.length} 件のうち ${n} 件が対象です`
     +`（直近5回の平均が ${slowSec} 秒超 ${n-fresh} 件 ＋ 記録なし ${fresh} 件）。`;
   el('go').disabled=!canStart();
 }
@@ -1009,18 +1383,44 @@ function sync(){
 /* ---- セッション ---- */
 let mode='random', queue=[], qi=0, cur=null, times=[], prev=null;
 function selected(){ return CASES.filter(c=>sel.has(c.id)); }
+function zSelected(){ return [...zSel].sort((a,b)=>a-b); }
+/* ZBLS のみのときは ZBLS ケースが出題単位、それ以外は ZBLL ケース */
+const unitIsZbls=()=>practice==='zbls';
 /* Slow: 直近 5 回の平均がしきい値を超えているケース。
-   記録がまだないケースは速いと分からないので対象に含める。 */
-function isSlow(c){
-  const r=recent5(stats.zbll[CKEY(c)]);
+   記録がまだないケースは速いと分からないので対象に含める。
+   見るのは「いま練習している種類」の記録。 */
+function overLimit(e){
+  const r=recent5(e);
   return r===null || r > slowSec*1000;
 }
-function slowPool(){ return selected().filter(isSlow); }
+function comboRowsFor(c){
+  const b=bucket(), key=CKEY(c), out=[];
+  for(const [k,e] of Object.entries(b.combo)){
+    const p=comboParts(k); if(p && p[1]===key) out.push(e);
+  }
+  return out;
+}
+function isSlow(c){
+  if(practice==='both'){
+    const rows=comboRowsFor(c);
+    if(!rows.length) return true;              /* まだ回していない組は対象 */
+    const r=agg(rows).r5;
+    return r===null || r>slowSec*1000;
+  }
+  return overLimit(bucket().zbll[CKEY(c)]);
+}
+function isSlowZ(i){ return overLimit(bucket().zbls[ZKEY(i)]); }
+/* Slow の対象一覧（出題単位に合わせる） */
+function slowPool(){
+  return unitIsZbls() ? zSelected().filter(isSlowZ) : selected().filter(isSlow);
+}
+function allUnits(){ return unitIsZbls() ? zSelected() : selected(); }
 /* 出題対象。Slow が ON ならそこから絞る。 */
-function activeCases(){ return slowOn ? slowPool() : selected(); }
+function activeCases(){ return slowOn ? slowPool() : allUnits(); }
 function shuffle(a){ a=a.slice();
   for(let i=a.length-1;i>0;i--){const k=Math.floor(Math.random()*(i+1));[a[i],a[k]]=[a[k],a[i]];} return a; }
 function buildQueue(){
+  qGen++; nextQ=null;
   const s=activeCases();
   if(mode==='straight') queue=s.slice();
   else if(mode==='recap') queue=shuffle(s);
@@ -1037,9 +1437,58 @@ function nextCase(){
   return queue[qi++];
 }
 let curZ=null;          /* {idx, slot, sol} */
+let curScramble='';
+let nextQ=null, qGen=0;     /* 先読みした次の問題と、設定が変わったかを見る世代番号 */
+
+/* 1 問分（ケース・ZBLS・スクランブル）を組み立てる。出題できないときは null */
+function buildQuestion(){
+  const unit=nextCase();
+  /* ZBLS のみ: 出題単位は ZBLS ケース。後ろに続く ZBLL は 480 ケースから任意に選ぶ。 */
+  let zi=null, c=null;
+  if(unitIsZbls()){ c = unit===null ? null : pick(CASES); zi=unit; }
+  else { c=unit; if(practice==='both' && c && zSel.size) zi=pick(zSelected()); }
+  if(!c) return null;
+  /* 実際のソルブ（AUF → ZBLS → AUF → ZBLL → AUF）の逆順・逆向きを 1 本に詰める。
+     u3 が ZBLL 後、u2 が ZBLS と ZBLL の間、u1 が ZBLS 前の AUF にあたる。 */
+  const AUFS=['','U','U2',"U'"];
+  const u1=pick(AUFS), u2=pick(AUFS), u3=pick(AUFS);
+  let s='', z=null;
+  if(zi!==null && zSlots.size){
+    const si=pick([...zSlots]);
+    const setup=zSetups(zi)[si];
+    if(solverState==='ready'){
+      s=reduce([u3,cur0(c),u2,setup,u1].filter(Boolean).join(' '));
+    } else {
+      let best=null;
+      for(const cand of c.scr){
+        const r=reduce([u3,cand,u2,setup,u1].filter(Boolean).join(' '));
+        const n=r?r.split(' ').length:0;
+        if(!best||n<best.n) best={r,n};
+      }
+      s=best?best.r:'';
+    }
+    /* ZBLL と ZBLS をつないだだけの列を、同じ状態になる 1 本に置き換える */
+    const one=singleScramble(s);
+    if(one) s=one;
+    z={idx:zi, slot:SLOTS[si][0], sol:zSols(zi)[si], u1, u2, u3, setup};
+  } else {
+    let best=null;
+    for(const cand of c.scr){
+      const r=reduce([u3,cand,u1].filter(Boolean).join(' '));
+      const n=r?r.split(' ').length:0;
+      if(!best||n<best.n) best={r,n};
+    }
+    s=best?best.r:'';
+  }
+  return {c, z, s};
+}
+const cur0=c=>c.scr[0];
+
 function newScramble(){
-  cur=nextCase();
-  if(!cur){
+  let q=nextQ; nextQ=null;
+  if(!q || q.gen!==qGen) q=buildQuestion();
+  if(!q){
+    cur=null; curZ=null;
     if(slowOn && !slowPool().length){
       el('scramble').innerHTML=
         `<span class="done">直近5回の平均が ${slowSec} 秒を超えているケースがありません</span>`;
@@ -1048,42 +1497,28 @@ function newScramble(){
       el('scramble').innerHTML=`<span class="done">Recap 完了（${times.length} 回）</span>`;
       el('thint').textContent='モードを選び直すと再開します';
     }
-    renderStats(); return; }
-  /* 実際のソルブ（AUF → ZBLS → AUF → ZBLL → AUF）の逆順・逆向きを 1 本に詰める。
-     u3 が ZBLL 後、u2 が ZBLS と ZBLL の間、u1 が ZBLS 前の AUF にあたる。 */
-  const AUFS=['','U','U2',"U'"];
-  const u1=pick(AUFS), u2=pick(AUFS), u3=pick(AUFS);
-  curZ=null;
-  let s='';
-  if(zOn && zSel.size && zSlots.size){
-    const zi=pick([...zSel]), si=pick([...zSlots]);
-    const setup=zSetups(zi)[si];
-    let best=null;
-    for(const cand of cur.scr){
-      const r=reduce([u3,cand,u2,setup,u1].filter(Boolean).join(' '));
-      const n=r?r.split(' ').length:0;
-      if(!best||n<best.n) best={r,n};
-    }
-    s=best?best.r:'';
-    curZ={idx:zi, slot:SLOTS[si][0], sol:zSols(zi)[si], u1, u2, u3, setup};
-  } else {
-    let best=null;
-    for(const cand of cur.scr){
-      const r=reduce([u3,cand,u1].filter(Boolean).join(' '));
-      const n=r?r.split(' ').length:0;
-      if(!best||n<best.n) best={r,n};
-    }
-    s=best?best.r:'';
+    renderStats(); return;
   }
-  curScramble=s;
-  let html=s;
+  cur=q.c; curZ=q.z; curScramble=q.s;
+  let html=curScramble;
   if(curZ) html+=`<span class="zs">ZBLS: ${curZ.slot} スロット</span>`;
-  if(revealed) html+=`<span class="cs-sm">${cur.g} / ${cur.cp} / ${cur.lab}</span>`;
+  if(revealed && !unitIsZbls()) html+=`<span class="cs-sm">${cur.g} / ${cur.cp} / ${cur.lab}</span>`;
   el('scramble').innerHTML=html;
   el('thint').textContent=HINT;
   renderStats();
+  prefetch();
 }
-let curScramble='';
+/* 次の 1 問を手が空いているうちに作っておく（ソルバーの待ち時間を見せない） */
+function prefetch(){
+  if(solverState!=='ready' || nextQ) return;
+  const gen=qGen;
+  setTimeout(()=>{
+    if(qGen!==gen || nextQ) return;
+    const q=buildQuestion();
+    if(q){ q.gen=gen; nextQ=q; }
+  }, 0);
+}
+
 
 /* ---- タイマー ---- */
 const HOLD=350, HINT='長押し（スペース / 画面タッチ）→ 離してスタート、もう一度でストップ';
@@ -1107,7 +1542,7 @@ function stop(){
   if(state!=='running') return;
   cancelAnimationFrame(raf); state='idle';
   const ms=performance.now()-t0; el('tval').textContent=fmt(ms);
-  times.push({ms, c:cur});
+  times.push({ms, c:cur, z:curZ?curZ.idx:null, zs:curZ?curZ.slot:null, p:practice});
   recordTime(ms, cur, curZ?curZ.idx:null);
   prev={c:cur, s:curScramble, ms, z:curZ};
   newScramble(); renderPrev(); renderStats();
@@ -1119,6 +1554,10 @@ document.addEventListener('keydown',e=>{
   if(!el('scr-run').classList.contains('on')) return;
   if(e.code==='Space'){ e.preventDefault(); if(!e.repeat) holdStart(); return; }
   if(state==='running'){ e.preventDefault(); stop(); return; }
+  if(e.key==='p'){ if(el('padd')) addPrevToPreset(el('padd'),'ll'); return; }
+  if(e.key==='d'){ if(el('pdel')) removePrevFromPreset(el('pdel'),'ll'); return; }
+  if(e.key==='P'){ if(el('zadd')) addPrevToPreset(el('zadd'),'ls'); return; }
+  if(e.key==='D'){ if(el('zdel')) removePrevFromPreset(el('zdel'),'ls'); return; }
 });
 document.addEventListener('keyup',e=>{
   if(!el('scr-run').classList.contains('on')) return;
@@ -1145,77 +1584,126 @@ function renderStats(){
   el('row-prog').style.display=showProg?'flex':'none';
   if(showProg) el('k-prog').textContent=`${Math.max(0,queue.length-qi)} / ${queue.length}`;
   el('row-slow').style.display=slowOn?'flex':'none';
-  if(slowOn) el('k-slow').textContent=`${slowPool().length} / ${sel.size}`;
+  if(slowOn) el('k-slow').textContent=`${slowPool().length} / ${allUnits().length}`;
   const box=el('times'); box.innerHTML='';
   times.slice().reverse().slice(0,60).forEach((t,i)=>{
     const d=document.createElement('div'); d.className='trow';
-    d.innerHTML=`<span class="c">${times.length-i}. ${t.c.g} ${t.c.lab}</span><span class="t">${fmt(t.ms)}</span>`;
+    d.innerHTML=`<span class="c">${times.length-i}. ${timeLabel(t)}</span><span class="t">${fmt(t.ms)}</span>`;
     box.appendChild(d);
   });
 }
+/* 記録一覧の見出し。ZBLLのみ / ZBLSのみ はそれぞれ、ZBLS→ZBLL は両方を並べる */
+const SHORTG={'Anti-Sune':'aS','Sune':'S'};
+function timeLabel(t){
+  const ll = t.c ? `${SHORTG[t.c.g]||t.c.g} ${t.c.lab}` : '';
+  const ls = (t.z===null||t.z===undefined) ? ''
+           : zLabel(t.z).replace('F2L ','F2L') + (t.zs?' '+t.zs:'');
+  const p = t.p || practice;
+  if(p==='zbll') return ll;
+  if(p==='zbls') return ls || ll;
+  return (ls && ll) ? ls+' · '+ll : (ls||ll);
+}
 let target=null;                       /* 追加先プリセット名 */
+/* kind: 'll' = ZBLL ケース, 'ls' = ZBLS ケース */
+function prevKey(kind){
+  if(!prev) return null;
+  if(kind==='ls') return prev.z ? ZKEY(prev.z.idx) : null;
+  return (practice==='zbls' || !prev.c) ? null : CKEY(prev.c);
+}
+function zLabel(i){
+  const no=ZGROUPS[ZBLS[i][0]][0];
+  return no===null?'その他':'F2L '+no;
+}
+function prevLabel(kind){
+  if(kind==='ls') return prev&&prev.z ? 'ZBLS '+zLabel(prev.z.idx) : '';
+  return prev&&prev.c ? `${prev.c.g} ${prev.c.lab}` : '';
+}
+const listOf=(p,kind)=> kind==='ls' ? (p.zkeys||(p.zkeys=[])) : p.keys;
+function inPreset(name,kind){
+  const k=prevKey(kind); if(k===null) return false;
+  const p=presets.find(x=>x.name===name);
+  return !!p && listOf(p,kind).includes(k);
+}
 function renderTargets(){
   const s=el('ptarget'); if(!s) return;
   s.innerHTML='';
   presets.forEach(p=>{ const o=document.createElement('option');
-    o.value=p.name; o.textContent=`${p.name} (${p.keys.length})`; s.appendChild(o); });
+    const nz=p.zkeys?p.zkeys.length:0;
+    o.value=p.name; o.textContent=`${p.name} (${p.keys.length}${nz?'+'+nz:''})`; s.appendChild(o); });
   const o=document.createElement('option'); o.value='__new__'; o.textContent='＋ 新しいプリセット…';
   s.appendChild(o);
   if(!target && lastPreset && presets.some(p=>p.name===lastPreset)) target=lastPreset;
   if(target && presets.some(p=>p.name===target)) s.value=target;
   else { target = presets.length?presets[0].name:'__new__'; s.value=target; }
-  const del=el('pdel');
-  if(del){
-    const inPreset = prev && presets.some(p=>p.name===target && p.keys.includes(CKEY(prev.c)));
-    del.disabled=!inPreset;
-    del.title=inPreset?'このプリセットから外す (D)':'このプリセットには登録されていません';
-  }
+  [['ll','padd','pdel'],['ls','zadd','zdel']].forEach(([kind,addId,delId])=>{
+    const a=el(addId), d=el(delId);
+    const has=prevKey(kind)!==null;
+    if(a){ a.disabled=!has;
+      a.title=has?'このプリセットに追加':'直前の出題にこの種類のケースがありません'; }
+    if(d){ const inp=has&&inPreset(target,kind);
+      d.disabled=!inp;
+      d.title=inp?'このプリセットから外す':'このプリセットには登録されていません'; }
+  });
 }
-function addPrevToPreset(btn){
+function addPrevToPreset(btn, kind){
+  kind=kind||'ll';
   if(!prev) return toast('まだ記録がありません');
+  const k=prevKey(kind);
+  if(k===null) return toast(kind==='ls'?'直前の出題に ZBLS はありません':'直前の出題に ZBLL はありません');
   let name=target;
   if(name==='__new__'){
     name=(window.prompt('新しいプリセット名','苦手ケース')||'').trim();
     if(!name) return;
-    if(!presets.some(p=>p.name===name)) presets.push({name,keys:[]});
+    if(!presets.some(p=>p.name===name)) presets.push({name,keys:[],zkeys:[]});
     target=name;
   }
   const p=presets.find(x=>x.name===name); if(!p) return;
-  const k=CKEY(prev.c);
-  if(p.keys.includes(k)) return toast(`「${name}」に登録済みです`);
-  p.keys.push(k); savePresets();
-  toast(`${prev.c.g} ${prev.c.lab} を「${name}」に追加`);
+  const list=listOf(p,kind);
+  if(list.includes(k)) return toast(`「${name}」に登録済みです`);
+  list.push(k); savePresets();
+  toast(`${prevLabel(kind)} を「${name}」に追加`);
   if(btn){ const t=btn.textContent; btn.textContent='追加しました'; btn.classList.add('done');
     setTimeout(()=>{ btn.textContent=t; btn.classList.remove('done'); },1200); }
 }
-function removePrevFromPreset(btn){
+function removePrevFromPreset(btn, kind){
+  kind=kind||'ll';
   if(!prev) return toast('まだ記録がありません');
   if(target==='__new__' || !presets.length) return toast('プリセットを選んでください');
   const p=presets.find(x=>x.name===target); if(!p) return;
-  const k=CKEY(prev.c), i=p.keys.indexOf(k);
+  const k=prevKey(kind); if(k===null) return;
+  const list=listOf(p,kind), i=list.indexOf(k);
   if(i<0) return toast(`「${target}」に登録されていません`);
-  p.keys.splice(i,1); savePresets();
-  toast(`${prev.c.g} ${prev.c.lab} を「${target}」から削除`);
+  list.splice(i,1); savePresets();
+  toast(`${prevLabel(kind)} を「${target}」から削除`);
   if(btn){ const t=btn.textContent; btn.textContent='削除しました';
     setTimeout(()=>{ btn.textContent=t; },1200); }
 }
 function renderPrev(){
   if(!prev){ el('prev').innerHTML=
     `<div class="sc" style="color:var(--mute)">1本目を計測すると、ここに直前のケースが出ます</div>`; return; }
+  const zOnly = practice==='zbls';
+  const fig = zOnly&&prev.z ? obliqueSvg(ZBLS[prev.z.idx][1]) : planSvg(prev.c.fd);
+  const name = zOnly
+    ? `直前: ZBLS ${prev.z?zLabel(prev.z.idx):''} / <b>${prev.z?prev.z.slot:''}</b>`
+    : `直前: ${prev.c.g} / ${prev.c.cp} / <b>${prev.c.lab}</b>`;
+  const btns=[]
+    .concat(zOnly?[]:[`<button class="addbtn" id="padd" type="button">★ LL</button>`,
+                      `<button class="addbtn del" id="pdel" type="button">✕ LL</button>`])
+    .concat(prev.z?[`<button class="addbtn" id="zadd" type="button">★ LS</button>`,
+                    `<button class="addbtn del" id="zdel" type="button">✕ LS</button>`]:[]);
   el('prev').innerHTML=
-     `<div class="pfig">${planSvg(prev.c.fd)}</div>`
-    +`<div class="nm">直前: ${prev.c.g} / ${prev.c.cp} / <b>${prev.c.lab}</b></div>`
+     `<div class="pfig">${fig}</div>`
+    +`<div class="nm">${name}</div>`
     +`<div class="tm">${fmt(prev.ms)}</div>`
     +`<div class="sc">${prev.s.trim()}</div>`
     +(prev.z?`<div class="zsol">ZBLS (${prev.z.slot}): ${prev.z.sol}</div>`:'')
-    +`<div class="add"><select id="ptarget" title="追加先 / 削除元"></select>`
-    +`<button class="addbtn" id="padd" type="button">★ 追加</button>`
-    +`<button class="addbtn del" id="pdel" type="button">✕ 削除</button></div>`;
+    +`<div class="add"><select id="ptarget" title="追加先 / 削除元"></select>`+btns.join('')+`</div>`;
   renderTargets();
-  el('ptarget').onchange=e=>{ target=e.target.value;
-    if(target==='__new__'){} };
-  el('padd').onclick=e=>addPrevToPreset(e.currentTarget);
-  el('pdel').onclick=e=>removePrevFromPreset(e.currentTarget);
+  el('ptarget').onchange=e=>{ target=e.target.value; renderTargets(); };
+  if(el('padd')) el('padd').onclick=e=>addPrevToPreset(e.currentTarget,'ll');
+  if(el('pdel')) el('pdel').onclick=e=>removePrevFromPreset(e.currentTarget,'ll');
+  if(el('zadd')) el('zadd').onclick=e=>addPrevToPreset(e.currentTarget,'ls');
+  if(el('zdel')) el('zdel').onclick=e=>removePrevFromPreset(e.currentTarget,'ls');
 }
 
 /* ---- 統計 ---- */
@@ -1236,7 +1724,7 @@ function agg(list){
 function statRow(label, a, opts){
   const o=opts||{};
   const d=document.createElement('div'); d.className='strow';
-  if(o.fig) d.innerHTML=`<div class="fig">${o.fig}</div>`;
+  if(o.fig) d.innerHTML=`<div class="fig${o.wide?' fig2':''}">${o.fig}</div>`;
   const v=a[metric];
   const col=v===null?'var(--mute)':tcol(v);
   const pct=v===null?0:Math.max(4,Math.min(100,(v/1000)/10*100));
@@ -1246,23 +1734,48 @@ function statRow(label, a, opts){
     +`<div class="av" style="color:${col}">${v===null?'—':fmt2(v)}</div>`;
   return d;
 }
+let statMode=null;                 /* 統計画面で見ている練習の種類 */
+function statBucket(){
+  if(statMode==='legacy') return stats.legacy;
+  return stats.byMode[statMode] || emptyBucket();
+}
+const bucketCount=b=>Object.keys(b.zbll).length+Object.keys(b.zbls).length
+  +Object.keys(b.combo||{}).length;
 function renderStatScreen(){
   const box=el('statbody'); box.innerHTML='';
-  const all=Object.values(stats.zbll);
+
+  /* 見る種類を選ぶ。記録のない種類も選べるようにしておく（空の案内を出す） */
+  const tabs=PRACTICE.map(([k,lab])=>[k,lab]);
+  if(bucketCount(stats.legacy)) tabs.push(['legacy','以前の記録']);
+  if(!tabs.some(t=>t[0]===statMode)) statMode=practice;
+  const mseg=document.createElement('div'); mseg.className='seg';
+  tabs.forEach(([k,lab])=>{
+    const b=document.createElement('button'); b.type='button'; b.textContent=lab;
+    b.setAttribute('aria-pressed', statMode===k);
+    b.onclick=()=>{ statMode=k; renderStatScreen(); };
+    mseg.appendChild(b);
+  });
+  box.appendChild(mseg);
+
+  const B=statBucket();
+  const isCombo = statMode==='both';
+  const showLL = !isCombo && statMode!=='zbls';
+  const showLS = !isCombo && statMode!=='zbll';
+  const all=Object.values(isCombo?(B.combo||{}):(showLL?B.zbll:B.zbls));
   const A=agg(all);
-  const everyTime=[];
-  for(const e of all) everyTime.push(...e.r);
-  const recent=everyTime.slice(-12);
-  const aoN=n=>{ if(recent.length<n) return null;
-    const a=recent.slice(-n).sort((x,y)=>x-y).slice(1,-1);
-    return a.reduce((s,x)=>s+x,0)/a.length; };
   const tried=all.filter(e=>e.n>0).length;
+  const total=isCombo?null:(showLL?CASES.length:ZBLS.length);
   const sum=[['総ソルブ',A.n],['合計時間',A.n?(A.s/1000/60).toFixed(1)+'分':'—'],
     ['全体平均',A.avg===null?'—':fmt2(A.avg)],
     ['直近5平均',A.r5===null?'—':fmt2(A.r5)],
     ['ベスト',A.b===null?'—':fmt2(A.b)],
     ['ワースト',A.w===null?'—':fmt2(A.w)],
-    ['練習済みケース',tried+' / '+CASES.length]];
+    [isCombo?'練習済みの組み合わせ':'練習済みケース', total===null?String(tried):tried+' / '+total]];
+  const g=document.createElement('div'); g.className='sumgrid';
+  sum.forEach(([k,v])=>{ const b=document.createElement('div'); b.className='sumbox';
+    b.innerHTML=`<div class="v">${v}</div><div class="k">${k}</div>`; g.appendChild(b); });
+  box.appendChild(g);
+
   const seg=document.createElement('div'); seg.className='seg'; seg.style.marginTop='12px';
   [['avg','全体平均'],['r5','直近5回の平均']].forEach(([k,lab])=>{
     const b=document.createElement('button'); b.type='button'; b.textContent=lab;
@@ -1270,80 +1783,135 @@ function renderStatScreen(){
     b.onclick=()=>{ metric=k; renderStatScreen(); };
     seg.appendChild(b);
   });
-  const g=document.createElement('div'); g.className='sumgrid';
-  sum.forEach(([k,v])=>{ const b=document.createElement('div'); b.className='sumbox';
-    b.innerHTML=`<div class="v">${v}</div><div class="k">${k}</div>`; g.appendChild(b); });
-  box.appendChild(g); box.appendChild(seg);
-  if(!A.n){ const p=document.createElement('p'); p.className='sub';
-    p.style.marginTop='16px'; p.textContent='まだ記録がありません。練習するとここに集計されます。';
-    box.appendChild(p); return; }
+  box.appendChild(seg);
 
-  // --- ZBLL: グループ → CP → ケース ---
-  const h2=document.createElement('div'); h2.className='sect2';
-  h2.textContent='ZBLL（'+(metric==='avg'?'全体平均':'直近5回の平均')+'）'; box.appendChild(h2);
-  DATA.forEach(([gname,gkey,blocks])=>{
-    const ids=CASES.filter(c=>c.g===gname);
-    const ga=agg(ids.map(c=>stats.zbll[CKEY(c)]));
-    const sec=document.createElement('section'); sec.className='stgrp';
-    const head=document.createElement('div'); head.className='stghead';
-    const gv=ga[metric];
-    const col=gv===null?'var(--mute)':tcol(gv);
-    head.innerHTML=`<span class="caret">▶</span><span class="gname">${gname}</span>`
-      +`<span class="nx">${ga.n||'-'}</span>`
-      +`<span class="av" style="color:${col}">${gv===null?'—':fmt2(gv)}</span>`;
-    head.onclick=()=>sec.classList.toggle('open');
-    sec.appendChild(head);
-    const bd=document.createElement('div'); bd.className='body';
-    blocks.forEach(([cp,cs])=>{
-      const sub=document.createElement('div'); sub.className='stsub';
-      const list=CASES.filter(c=>c.g===gname&&c.cp===cp);
-      const sa=agg(list.map(c=>stats.zbll[CKEY(c)]));
-      const sv=sa[metric];
-      const sc=sv===null?'var(--mute)':tcol(sv);
-      const hh=document.createElement('div'); hh.className='h';
-      hh.innerHTML=`<span class="cpn">${cp}</span><span class="nx">${sa.n||'-'}</span>`
-        +`<span class="av" style="color:${sc}">${sv===null?'—':fmt2(sv)}</span>`;
-      hh.onclick=()=>sub.classList.toggle('open');
-      sub.appendChild(hh);
-      const cbox=document.createElement('div'); cbox.className='cases';
-      list.forEach(c=>{
-        const e=stats.zbll[CKEY(c)];
-        cbox.appendChild(statRow(c.lab, agg([e]), {fig:planSvg(c.fd)}));
-      });
-      sub.appendChild(cbox); bd.appendChild(sub);
+  if(!bucketCount(B)){
+    const p=document.createElement('p'); p.className='sub'; p.style.marginTop='16px';
+    p.textContent = statMode==='legacy'
+      ? '以前の記録はありません。'
+      : 'この練習ではまだ記録がありません。練習するとここに集計されます。';
+    box.appendChild(p); return;
+  }
+  const mlab=metric==='avg'?'全体平均':'直近5回の平均';
+
+  /* --- ZBLS→ZBLL: ZBLS と ZBLL の組み合わせごと --- */
+  if(isCombo){
+    const rows=[];
+    for(const [k,e] of Object.entries(B.combo||{})){
+      const p=comboParts(k); if(!p||!e||!e.n) continue;
+      const zi=ZBYKEY.get(p[0]), id=BYKEY.get(p[1]);
+      if(zi===undefined||id===undefined) continue;
+      rows.push({zi, c:CASES[id], e});
+    }
+    if(!rows.length){
+      const p=document.createElement('p'); p.className='sub'; p.style.marginTop='16px';
+      p.textContent='まだ記録がありません。'; box.appendChild(p); return;
+    }
+    const h2=document.createElement('div'); h2.className='sect2';
+    h2.textContent='ZBLS + ZBLL の組み合わせ（'+mlab+'）'; box.appendChild(h2);
+    const byG=new Map();
+    rows.forEach(r=>{ const g2=ZBLS[r.zi][0];
+      if(!byG.has(g2)) byG.set(g2,[]); byG.get(g2).push(r); });
+    [...byG.keys()].sort((a,b)=>a-b).forEach(gi=>{
+      const list=byG.get(gi);
+      const ga=agg(list.map(r=>r.e));
+      const gv=ga[metric], col=gv===null?'var(--mute)':tcol(gv);
+      const no=ZGROUPS[gi][0];
+      const sec=document.createElement('section'); sec.className='stgrp';
+      const head=document.createElement('div'); head.className='stghead';
+      head.innerHTML=`<span class="caret">▶</span>`
+        +`<span class="gname">${no===null?'その他':'F2L '+no}</span>`
+        +`<span class="nx">${ga.n}</span>`
+        +`<span class="av" style="color:${col}">${gv===null?'—':fmt2(gv)}</span>`;
+      head.onclick=()=>sec.classList.toggle('open');
+      const bd=document.createElement('div'); bd.className='body';
+      list.sort((a,b)=>{ const x=agg([b.e])[metric], y=agg([a.e])[metric];
+        return (x===null?-1:x)-(y===null?-1:y); });
+      list.forEach(r=>bd.appendChild(statRow(
+        `${r.c.g} / ${r.c.cp} / ${r.c.lab}`, agg([r.e]),
+        {fig:obliqueSvg(ZBLS[r.zi][1])+planSvg(r.c.fd), wide:true})));
+      sec.appendChild(head); sec.appendChild(bd); box.appendChild(sec);
     });
-    sec.appendChild(bd); box.appendChild(sec);
-  });
 
-  // --- 苦手ケース ---
-  const slow=CASES.map(c=>({c,e:stats.zbll[CKEY(c)]})).filter(x=>x.e&&x.e.n>0)
-    .sort((a,b)=>b.e.s/b.e.n - a.e.s/a.e.n).slice(0,10);
-  if(slow.length){
-    const t=document.createElement('div'); t.className='sect2'; t.textContent='平均が遅いケース 上位10';
-    box.appendChild(t);
-    const w=document.createElement('div'); w.className='stgrp'; const b2=document.createElement('div');
-    b2.style.padding='4px 10px';
-    slow.forEach(x=>b2.appendChild(statRow(`${x.c.g} / ${x.c.cp} / ${x.c.lab}`, agg([x.e]), {fig:planSvg(x.c.fd)})));
+    const slow=rows.slice().sort((a,b)=>b.e.s/b.e.n - a.e.s/a.e.n).slice(0,10);
+    const t=document.createElement('div'); t.className='sect2';
+    t.textContent='平均が遅い組み合わせ 上位10'; box.appendChild(t);
+    const w=document.createElement('div'); w.className='stgrp';
+    const b2=document.createElement('div'); b2.style.padding='4px 10px';
+    slow.forEach(r=>b2.appendChild(statRow(
+      `${ZGROUPS[ZBLS[r.zi][0]][0]===null?'その他':'F2L '+ZGROUPS[ZBLS[r.zi][0]][0]} → ${r.c.g} ${r.c.lab}`,
+      agg([r.e]), {fig:obliqueSvg(ZBLS[r.zi][1])+planSvg(r.c.fd), wide:true})));
     w.appendChild(b2); box.appendChild(w);
+    return;
   }
 
-  // --- ZBLS ---
-  const zEntries=Object.entries(stats.zbls).filter(([k,e])=>e.n>0);
-  if(zEntries.length){
-    const t=document.createElement('div'); t.className='sect2'; t.textContent='ZBLS（F2L ケース別）';
-    box.appendChild(t);
+  // --- ZBLL: グループ → CP → ケース ---
+  if(showLL && Object.keys(B.zbll).length){
+    const h2=document.createElement('div'); h2.className='sect2';
+    h2.textContent='ZBLL（'+mlab+'）'; box.appendChild(h2);
+    DATA.forEach(([gname,gkey,blocks])=>{
+      const ids=CASES.filter(c=>c.g===gname);
+      const ga=agg(ids.map(c=>B.zbll[CKEY(c)]));
+      const sec=document.createElement('section'); sec.className='stgrp';
+      const head=document.createElement('div'); head.className='stghead';
+      const gv=ga[metric];
+      const col=gv===null?'var(--mute)':tcol(gv);
+      head.innerHTML=`<span class="caret">▶</span><span class="gname">${gname}</span>`
+        +`<span class="nx">${ga.n||'-'}</span>`
+        +`<span class="av" style="color:${col}">${gv===null?'—':fmt2(gv)}</span>`;
+      head.onclick=()=>sec.classList.toggle('open');
+      sec.appendChild(head);
+      const bd=document.createElement('div'); bd.className='body';
+      blocks.forEach(([cp,cs])=>{
+        const sub=document.createElement('div'); sub.className='stsub';
+        const list=CASES.filter(c=>c.g===gname&&c.cp===cp);
+        const sa=agg(list.map(c=>B.zbll[CKEY(c)]));
+        const sv=sa[metric];
+        const sc=sv===null?'var(--mute)':tcol(sv);
+        const hh=document.createElement('div'); hh.className='h';
+        hh.innerHTML=`<span class="cpn">${cp}</span><span class="nx">${sa.n||'-'}</span>`
+          +`<span class="av" style="color:${sc}">${sv===null?'—':fmt2(sv)}</span>`;
+        hh.onclick=()=>sub.classList.toggle('open');
+        sub.appendChild(hh);
+        const cbox=document.createElement('div'); cbox.className='cases';
+        list.forEach(c=>cbox.appendChild(statRow(c.lab, agg([B.zbll[CKEY(c)]]), {fig:planSvg(c.fd)})));
+        sub.appendChild(cbox); bd.appendChild(sub);
+      });
+      sec.appendChild(bd); box.appendChild(sec);
+    });
+
+    const slow=CASES.map(c=>({c,e:B.zbll[CKEY(c)]})).filter(x=>x.e&&x.e.n>0)
+      .sort((a,b)=>b.e.s/b.e.n - a.e.s/a.e.n).slice(0,10);
+    if(slow.length){
+      const t=document.createElement('div'); t.className='sect2';
+      t.textContent='ZBLL で平均が遅いケース 上位10'; box.appendChild(t);
+      const w=document.createElement('div'); w.className='stgrp';
+      const b2=document.createElement('div'); b2.style.padding='4px 10px';
+      slow.forEach(x=>b2.appendChild(
+        statRow(`${x.c.g} / ${x.c.cp} / ${x.c.lab}`, agg([x.e]), {fig:planSvg(x.c.fd)})));
+      w.appendChild(b2); box.appendChild(w);
+    }
+  }
+
+  // --- ZBLS: F2L ケースごと ---
+  const zEntries=Object.entries(B.zbls)
+    .map(([k,e])=>[ZBYKEY.get(k), e]).filter(([i,e])=>i!==undefined && e.n>0);
+  if(showLS && zEntries.length){
+    const t=document.createElement('div'); t.className='sect2';
+    t.textContent='ZBLS（F2L ケース別・'+mlab+'）'; box.appendChild(t);
     const byG=new Map();
-    zEntries.forEach(([k,e])=>{ const i=+k; if(!ZBLS[i]) return;
-      const g=ZBLS[i][0]; if(!byG.has(g)) byG.set(g,[]); byG.get(g).push([i,e]); });
+    zEntries.forEach(([i,e])=>{ const g2=ZBLS[i][0];
+      if(!byG.has(g2)) byG.set(g2,[]); byG.get(g2).push([i,e]); });
     [...byG.keys()].sort((a,b)=>a-b).forEach(gi=>{
       const rows=byG.get(gi);
       const ga=agg(rows.map(r=>r[1]));
       const sec=document.createElement('section'); sec.className='stgrp';
       const gv2=ga[metric];
       const col=gv2===null?'var(--mute)':tcol(gv2);
+      const no=ZGROUPS[gi][0];
       const head=document.createElement('div'); head.className='stghead';
       head.innerHTML=`<span class="caret">▶</span>`
-        +`<span class="gname">F2L ${ZGROUPS[gi][0]}</span>`
+        +`<span class="gname">${no===null?'その他':'F2L '+no}</span>`
         +`<span class="nx">${ga.n}</span>`
         +`<span class="av" style="color:${col}">${gv2===null?'—':fmt2(gv2)}</span>`;
       head.onclick=()=>sec.classList.toggle('open');
@@ -1369,14 +1937,22 @@ el('slowsec').oninput=e=>{
   slowSec=Math.min(60,Math.max(0.5,v));
   save('zbll-practice-slowsec',slowSec); syncSlow();
 };
-el('go').onclick=()=>{ buildQueue(); times=[]; prev=null; state='idle';
+function startRun(){
+  buildQueue(); times=[]; prev=null; state='idle';
   el('timer').className='timer'; el('tval').textContent='0.00';
-  renderPrev(); newScramble(); renderStats(); show('run'); };
+  renderPrev(); renderStats(); show('run');
+  if(needSolver() && solverState==='idle'){
+    el('scramble').innerHTML='<span class="done">スクランブルを準備しています…</span>';
+    el('thint').textContent='初回だけ少し時間がかかります';
+    setTimeout(()=>{ buildSolver(); newScramble(); }, 30);
+  } else newScramble();
+}
+el('go').onclick=startRun;
 el('back').onclick=()=>show('sel');
 el('statopen').onclick=()=>{ renderStatScreen(); show('stat'); };
 el('statback').onclick=()=>show('sel');
 el('statreset').onclick=()=>{ if(confirm('これまでのタイム記録をすべて消去しますか？')){
-  stats={zbll:{},zbls:{}}; saveStats(); renderStatScreen(); toast('記録を消去しました'); } };
+  stats=normStats(null); saveStats(); renderStatScreen(); toast('記録を消去しました'); } };
 el('selall').onclick=()=>{ CASES.forEach(c=>sel.add(c.id)); sync(); };
 el('selnone').onclick=()=>{ sel.clear(); sync(); };
 el('mode').onclick=e=>{ const b=e.target.closest('button'); if(!b)return;
@@ -1389,7 +1965,14 @@ el('reveal').onclick=e=>{ revealed=!revealed;
 el('undo').onclick=()=>{ if(!times.length)return; times.pop(); renderStats(); };
 
 buildSelection(); buildZbls();
-el('zon').onclick=()=>{ zOn=!zOn; syncZ(); };
+(function(){
+  const box=el('ptype');
+  PRACTICE.forEach(([k,lab])=>{
+    const b=document.createElement('button'); b.type='button'; b.dataset.p=k; b.textContent=lab;
+    b.onclick=()=>{ practice=k; save('zbll-practice-type',k); syncZ(); if(typeof sync==='function') sync(); };
+    box.appendChild(b);
+  });
+})();
 el('ztoggle').onclick=()=>{ const s=el('zsec');
   s.dataset.open = s.dataset.open==='1'?'0':'1'; syncZ(); };
 sync(); syncZ(); renderPresets(); renderPrev();
