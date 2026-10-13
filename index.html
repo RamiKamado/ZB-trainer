@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#14151c">
 <meta property="og:type" content="website">
 <meta property="og:title" content="ZBLL / ZBLS 手順練習ツール">
-<meta property="og:description" content="ZBLL 480 ケース・ZBLS 299 ケースのスクランブル練習ツール（単一 HTML・オフライン動作）">
+<meta property="og:description" content="ZBLL 472 ケース・ZBLS 299 ケースのスクランブル練習ツール（単一 HTML・オフライン動作）">
 <!-- ホーム画面に追加したときに独立アプリとして開く -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -96,6 +96,7 @@ h1 em{font-style:normal;color:var(--y)}
  color:var(--mute);line-height:1.45;overflow-wrap:anywhere}
 .zcase[aria-selected=true] .zalg{color:var(--fg)}
 .zcase .zalg .tagc{color:#98a2ff;font-family:inherit}
+.zcase .zalg .tagw{color:#ffb454;font-family:inherit}
 .ebtn{flex:none;background:none;border:1px solid var(--line);color:var(--mute);
  border-radius:7px;padding:4px 9px;font-size:11px;cursor:pointer;white-space:nowrap}
 .ebtn:hover{border-color:var(--y);color:var(--y)}
@@ -317,7 +318,7 @@ h1 em{font-style:normal;color:var(--y)}
     <div id="sel"></div>
   </div>
   <div class="selbar"><div class="selbar-in">
-    <span class="n"><b id="nsel">0</b> / 480 ケース</span>
+    <span class="n"><b id="nsel">0</b> / <span id="ntotal">472</span> ケース</span>
     <button class="mini" id="selall" type="button">全選択</button>
     <button class="mini" id="selnone" type="button">全解除</button>
     <button class="mini" id="statopen" type="button">統計</button>
@@ -380,9 +381,23 @@ const el=id=>document.getElementById(id);
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 
 /* 全ケースを平坦化: {id, g, cp, lab, fd, scr} */
+/* H グループの BBFF / FBFB サブセットには、ラベルが違っても AUF（前後の U 回し）
+   だけの違いで同じ状態になる組がある。H はコーナーの向きが U 回しに対して
+   対称なので、12 ラベルのうち 4 つが別のラベルと重なる。同じケースを 2 つの
+   名前で出題すると、画面に出る名前と実際に解くケースが食い違うので、
+   出どころのデータに手順があるほう（スクランブルが複数あるほう）だけを残す。
+   消すほうを指していた選択・プリセット・記録は、残すほうに寄せる。 */
+const CDUP={
+  'H|BBFF|OxC':'H|BBFF|C/O', 'H|BBFF|C/A':'H|BBFF|A/O',
+  'H|BBFF|O/C':'H|BBFF|CxO', 'H|BBFF|O/A':'H|BBFF|A/C',
+  'H|FBFB|C/C':'H|FBFB|CxC', 'H|FBFB|C/A':'H|FBFB|A/C',
+  'H|FBFB|O/A':'H|FBFB|A/O', 'H|FBFB|OxO':'H|FBFB|O/O'
+};
 const CASES=[];
-DATA.forEach(([gname,gkey,blocks])=>blocks.forEach(([cp,cases])=>cases.forEach(([lab,fd,scr])=>
-  CASES.push({id:CASES.length, g:gname, cp, lab, fd, scr}))));
+DATA.forEach(([gname,gkey,blocks])=>blocks.forEach(([cp,cases])=>cases.forEach(([lab,fd,scr])=>{
+  if(CDUP[gname+'|'+cp+'|'+lab]) return;
+  CASES.push({id:CASES.length, g:gname, cp, lab, fd, scr});
+})));
 
 /* ---- plan 図（VisualCube と同じポリゴン座標） ---- */
 function planSvg(fd){
@@ -735,6 +750,14 @@ function merge(a,b){
 /* ---- 保存まわり ---- */
 const CKEY=c=>c.g+'|'+c.cp+'|'+c.lab;
 const BYKEY=new Map(CASES.map(c=>[CKEY(c),c.id]));
+/* 重なっていたラベルを指す古いキーも、残したケースに読み替える */
+Object.entries(CDUP).forEach(([from,to])=>{
+  const id=BYKEY.get(to); if(id!==undefined) BYKEY.set(from,id);
+});
+/* 保存データ・取り込みデータの中の古いキーを、残したケースのキーに直す */
+const cDedupKey=k=>CDUP[k]||k;
+const cDedupCombo=k=>{ const i=k.indexOf('@'); if(i<0) return k;
+  const t=k.slice(i+1); return k.slice(0,i+1)+(CDUP[t]||t); };
 const idsToKeys=ids=>[...ids].map(i=>CKEY(CASES[i])).filter(Boolean);
 const keysToIds=ks=>ks.map(k=>BYKEY.get(k)).filter(i=>i!==undefined);
 function load(k,def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def; }catch(e){ return def; } }
@@ -756,7 +779,10 @@ function zMigrate(list){
 
 /* presets: [{name, keys:[...], zkeys:[...]}] */
 let presets=load('zbll-practice-presets',[]);
-presets.forEach(p=>{ if(p && Array.isArray(p.zkeys)) p.zkeys=zMigrate(p.zkeys); });
+presets.forEach(p=>{
+  if(p && Array.isArray(p.zkeys)) p.zkeys=zMigrate(p.zkeys);
+  if(p && Array.isArray(p.keys)) p.keys=[...new Set(p.keys.map(cDedupKey))];
+});
 let lastPreset=load('zbll-practice-lastpreset',null);
 let slowSec=load('zbll-practice-slowsec',5);
 let slowOn=load('zbll-practice-slowon',false);
@@ -811,6 +837,30 @@ function normStats(o){
     return o2; };
   PRACTICE.forEach(([k])=>{ s.byMode[k].zbls=fix(s.byMode[k].zbls); });
   s.legacy.zbls=fix(s.legacy.zbls);
+  /* 重なっていたラベル（CDUP）の記録を、残したケースのキーに寄せる */
+  const putIn=(dst,key,e)=>{
+    if(!e || typeof e!=='object') return;
+    const d=dst[key];
+    if(!d){ dst[key]={n:e.n,s:e.s,b:e.b??null,w:e.w??null,r:(e.r||[]).slice(-12)}; return; }
+    d.n+=e.n; d.s+=e.s;
+    if(e.b!=null&&(d.b==null||e.b<d.b)) d.b=e.b;
+    if(e.w!=null&&(d.w==null||e.w>d.w)) d.w=e.w;
+    d.r=(d.r||[]).concat(e.r||[]).slice(-12);
+  };
+  const dedup=t=>{ const o2={};
+    for(const [k,e] of Object.entries(t||{})) putIn(o2, CDUP[k]||k, e);
+    return o2; };
+  const dedupC=t=>{ const o2={};
+    for(const [k,e] of Object.entries(t||{})){
+      const i=k.indexOf('@'), tail=i<0?'':k.slice(i+1);
+      putIn(o2, i<0?k:k.slice(0,i+1)+(CDUP[tail]||tail), e);
+    }
+    return o2; };
+  PRACTICE.forEach(([k])=>{
+    s.byMode[k].zbll=dedup(s.byMode[k].zbll);
+    s.byMode[k].combo=dedupC(s.byMode[k].combo);
+  });
+  s.legacy.zbll=dedup(s.legacy.zbll);
   /* 複合で集計する前の both の記録は、組に戻せないので「以前の記録」へ移す */
   const b2=s.byMode.both;
   if(b2 && (Object.keys(b2.zbll).length||Object.keys(b2.zbls).length)){
@@ -861,6 +911,46 @@ function saveZ(){ save('zbll-practice-type',practice); save('zbll-zbls-cases',zI
   save('zbll-zbls-slots',[...zSlots]); save('zbll-zbls-custom',zCustom); }
 const zSetups=i=>zCustom[ZKEY(i)]?zCustom[ZKEY(i)][0]:ZBLS[i][2];
 const zSols  =i=>zCustom[ZKEY(i)]?zCustom[ZKEY(i)][1]:ZBLS[i][3];
+
+/* ---- AUF が一意に決まるか ----
+   ZBLS が課す条件はスロットが埋まることとエッジが揃うことだけなので、
+   LL エッジの向きが U 回しに対して対称なケース（4 枚とも逆向き、向かい合う
+   2 枚が逆向き）では、どの AUF から手順を始めても ZBLS として成立する。
+   その場合 AUF の選び方は解く人の自由で、選び方によって続く ZBLL が
+   変わってしまうため「選んだ ZBLL が出る」と約束できない。
+   ZBLS→ZBLL ではこういう組を出題から外し、ZBLSのみでは普通に出題する。 */
+const AUF4=['','U','U2',"U'"];
+const zAufCache=new Map();
+function zAufCount(i,si){
+  const sol=zSols(i)[si], ck=ZKEY(i)+'|'+si+'|'+sol;
+  if(zAufCache.has(ck)) return zAufCache.get(ck);
+  let n=0;
+  try{
+    const st=applySeq(normTokens(zSetups(i)[si]));
+    const s=normTokens(sol);
+    for(const a of AUF4){
+      const base=a?applySeq(normTokens(a),st.slice()):st.slice();
+      if(zblsSolved(applySeq(s,base))) n++;
+    }
+  }catch(e){ n=0; }
+  zAufCache.set(ck,n); return n;
+}
+/* ZBLS→ZBLL で使える（ケース, スロット）の組 */
+function zPool(){
+  const out=[];
+  for(const i of zSel) for(const si of zSlots) if(zAufCount(i,si)===1) out.push([i,si]);
+  return out;
+}
+/* そのケースが、いま選んでいるスロットのどれでも使えないか */
+function zAmbCase(i){
+  if(!zSlots.size) return false;
+  for(const si of zSlots) if(zAufCount(i,si)===1) return false;
+  return true;
+}
+/* 選択中のうち ZBLS→ZBLL では出題できない件数 */
+function zAmbCount(){
+  let n=0; for(const i of zSel) if(zAmbCase(i)) n++; return n;
+}
 
 /* ユーザーが入力した手順を検証して、3スロット分のセットアップと手順に変換する */
 function applyCustom(i, text){
@@ -1035,23 +1125,29 @@ function syncZ(){
     const i=+b.dataset.z;
     b.setAttribute('aria-selected', zSel.has(i));
     const a=b.querySelector('.zalg');
-    if(a) a.innerHTML=(zCustom[i]?'<span class="tagc">自作</span> ':'')+zSols(i)[0];
+    if(a) a.innerHTML=(zCustom[i]?'<span class="tagc">自作</span> ':'')
+      +(practice==='both'&&zAmbCase(i)?'<span class="tagw">AUF 不定</span> ':'')
+      +zSols(i)[0];
   });
   el('zn').textContent = practice==='zbll'
     ? '使いません（ZBLLのみ）'
-    : `${zSel.size} / ${ZBLS.length} ケース · スロット ${zSlots.size}`;
+    : `${zSel.size} / ${ZBLS.length} ケース · スロット ${zSlots.size}`
+      + (practice==='both' && zAmbCount() ? ` · AUF 不定 ${zAmbCount()} 件は出題外` : '');
   document.querySelectorAll('#ptype button').forEach(b=>
     b.setAttribute('aria-pressed', b.dataset.p===practice));
   const pi=el('pinfo');
   if(pi) pi.textContent =
     practice==='zbll' ? 'ZBLL のスクランブルだけを出題します。'
-  : practice==='both' ? 'ZBLS を崩した状態から出題します。ZBLS を解くと、選んだ ZBLL ケースが出ます。'
-  : 'ZBLS だけを練習します。続く ZBLL は 480 ケースから無作為に選ばれ、記録もとりません。';
+  : practice==='both' ? 'ZBLS を崩した状態から出題します。表示される ZBLS 手順を使えば、選んだ ZBLL ケースが出ます。'
+      +'AUF がどれでも成立してしまうケース（LL エッジの向きが U 回しに対して対称なもの）は、'
+      +'続く ZBLL が決まらないので出題から外します。'
+  : `ZBLS だけを練習します。続く ZBLL は ${CASES.length} ケースから無作為に選ばれ、記録もとりません。`;
   saveZ(); if(typeof sync==='function') el('go').disabled = !canStart();
 }
 function canStart(){
   if(practice!=='zbls' && !sel.size) return false;
   if(practice!=='zbll' && (!zSel.size || !zSlots.size)) return false;
+  if(practice==='both' && !zPool().length) return false;
   if(slowOn && !slowPool().length) return false;
   return true;
 }
@@ -1097,7 +1193,7 @@ function inspect(text){
   if(Array.isArray(o.presets)){
     for(const p of o.presets){
       if(!p || typeof p.name!=='string' || !Array.isArray(p.keys)){ out.dropped++; continue; }
-      const keys=[...new Set(p.keys.filter(k=>BYKEY.has(k)))];
+      const keys=[...new Set(p.keys.filter(k=>BYKEY.has(k)).map(cDedupKey))];
       out.dropped+=p.keys.length-keys.length;
       let zkeys=null;
       if(Array.isArray(p.zkeys)){
@@ -1132,14 +1228,16 @@ function inspect(text){
   function cleanBucket(b){
     const zb={}, zs={}, cb={};
     if(b && typeof b==='object'){
-      if(b.zbll) for(const [k,e] of Object.entries(b.zbll)) if(BYKEY.has(k)&&okEntry(e)) zb[k]=e;
+      if(b.zbll) for(const [k,e] of Object.entries(b.zbll))
+        if(BYKEY.has(k)&&okEntry(e)) mergeStatTable(zb, {[cDedupKey(k)]:e}, false);
       if(b.zbls) for(const [k0,e] of Object.entries(b.zbls)){
         const key=/^\d+$/.test(k0)&&ZBLS[+k0]?ZKEY(+k0):k0;
         if(ZBYKEY.has(key)&&okEntry(e)) zs[key]=e;
       }
       if(b.combo) for(const [k,e] of Object.entries(b.combo)){
         const p=comboParts(k);
-        if(p && ZBYKEY.has(p[0]) && BYKEY.has(p[1]) && okEntry(e)) cb[k]=e;
+        if(p && ZBYKEY.has(p[0]) && BYKEY.has(p[1]) && okEntry(e))
+          mergeStatTable(cb, {[cDedupCombo(k)]:e}, false);
       }
     }
     return (Object.keys(zb).length||Object.keys(zs).length||Object.keys(cb).length)
@@ -1155,7 +1253,8 @@ function inspect(text){
   const se=o.settings;
   if(se && typeof se==='object'){
     const s2={};
-    if(Array.isArray(se.selection)) s2.selection=se.selection.filter(k=>BYKEY.has(k));
+    if(Array.isArray(se.selection))
+      s2.selection=[...new Set(se.selection.filter(k=>BYKEY.has(k)).map(cDedupKey))];
     if(PRACTICE.some(p=>p[0]===se.practice)) s2.practice=se.practice;
     else if(se.zbls && typeof se.zbls.on==='boolean') s2.practice=se.zbls.on?'both':'zbll';
     if(se.zbls && typeof se.zbls==='object'){
@@ -1317,7 +1416,6 @@ el('psave').onclick=()=>{
 
 function buildSelection(){
   const root=el('sel'); root.innerHTML='';
-  let i=0;
   DATA.forEach(([gname,gkey,blocks],gi)=>{
     const sec=document.createElement('section'); sec.className='gsec'+(gi===0?' open':'');
     const head=document.createElement('div'); head.className='ghead';
@@ -1332,16 +1430,22 @@ function buildSelection(){
       const blk=document.createElement('div'); blk.className='cpblk';
       const ch=document.createElement('div'); ch.className='cphead';
       ch.innerHTML=`<span class="cpname">${cp}</span>`;
-      const cb=document.createElement('button'); cb.className='mini'; cb.type='button'; cb.textContent='12個';
+      const cb=document.createElement('button'); cb.className='mini'; cb.type='button';
       ch.appendChild(cb); blk.appendChild(ch);
       const grid=document.createElement('div'); grid.className='cases';
       const ids=[];
-      cases.forEach(()=>{ const c=CASES[i++]; ids.push(c.id); gIds.push(c.id);
+      cases.forEach(([lab])=>{
+        const key=gname+'|'+cp+'|'+lab;
+        if(CDUP[key]) return;                 /* AUF 違いで重なるラベルは出さない */
+        const c=CASES[BYKEY.get(key)];
+        if(!c) return;
+        ids.push(c.id); gIds.push(c.id);
         const b=document.createElement('button'); b.className='cs'; b.type='button'; b.dataset.id=c.id;
         b.innerHTML=planSvg(c.fd)+`<div class="lb">${c.lab}</div>`;
         b.onclick=()=>{ sel.has(c.id)?sel.delete(c.id):sel.add(c.id); sync(); };
         grid.appendChild(b);
       });
+      cb.textContent=ids.length+'個';
       cb.onclick=()=>{ const all=ids.every(x=>sel.has(x));
         ids.forEach(x=>all?sel.delete(x):sel.add(x)); sync(); };
       blk.appendChild(grid); body.appendChild(blk);
@@ -1382,6 +1486,7 @@ function sync(){
   });
   syncSlow();
   el('nsel').textContent=sel.size;
+  if(el('ntotal')) el('ntotal').textContent=CASES.length;
   el('go').disabled=!canStart();
   saveSel();
 }
@@ -1447,20 +1552,27 @@ let curScramble='';
 let nextQ=null, qGen=0;     /* 先読みした次の問題と、設定が変わったかを見る世代番号 */
 
 /* 1 問分（ケース・ZBLS・スクランブル）を組み立てる。出題できないときは null */
-function buildQuestion(){
-  const unit=nextCase();
-  /* ZBLS のみ: 出題単位は ZBLS ケース。後ろに続く ZBLL は 480 ケースから任意に選ぶ。 */
-  let zi=null, c=null;
-  if(unitIsZbls()){ c = unit===null ? null : pick(CASES); zi=unit; }
-  else { c=unit; if(practice==='both' && c && zSel.size) zi=pick(zSelected()); }
+function makeQuestion(unit){
+  /* ZBLS のみ: 出題単位は ZBLS ケース。後ろに続く ZBLL は全ケースから任意に選ぶ。 */
+  let zi=null, c=null, si=null;
+  if(unitIsZbls()){
+    c = unit===null||unit===undefined ? null : pick(CASES); zi=unit;
+    if(zi!==null && zSlots.size) si=pick([...zSlots]);
+  } else {
+    c=unit;
+    if(practice==='both' && c && zSel.size){
+      /* AUF が一意に決まる組だけから選ぶ。続く ZBLL を約束できるのはこの組だけ。 */
+      const pool=zPool();
+      if(pool.length){ const p=pick(pool); zi=p[0]; si=p[1]; }
+    }
+  }
   if(!c) return null;
   /* 実際のソルブ（AUF → ZBLS → AUF → ZBLL → AUF）の逆順・逆向きを 1 本に詰める。
      u3 が ZBLL 後、u2 が ZBLS と ZBLL の間、u1 が ZBLS 前の AUF にあたる。 */
-  const AUFS=['','U','U2',"U'"];
+  const AUFS=AUF4;
   const u1=pick(AUFS), u2=pick(AUFS), u3=pick(AUFS);
   let s='', z=null;
-  if(zi!==null && zSlots.size){
-    const si=pick([...zSlots]);
+  if(zi!==null && si!==null){
     const setup=zSetups(zi)[si];
     if(solverState==='ready'){
       s=reduce([u3,cur0(c),u2,setup,u1].filter(Boolean).join(' '));
@@ -1489,6 +1601,51 @@ function buildQuestion(){
   return {c, z, s};
 }
 const cur0=c=>c.scr[0];
+
+/* ---- 出題の検算 ----
+   画面に出している ZBLL ケースが本当に出てくるかを、出題前に実際に回して確かめる。
+   ZBLL ケースは「前後に AUF が付いたもの」も同じケースなので、16 通りを正とする。
+   ZBLS を含むときは、表示している ZBLS 手順で解いたあとの状態がその 16 通りの
+   いずれかで、しかも AUF の選び方が 1 通りに決まることまで確認する。 */
+const caseStateCache=new Map();
+function caseStates(c){
+  let set=caseStateCache.get(c.id);
+  if(set) return set;
+  set=new Set();
+  for(const a of AUF4) for(const b of AUF4)
+    set.add(applySeq(normTokens([a,c.scr[0],b].filter(Boolean).join(' '))).join(''));
+  caseStateCache.set(c.id,set); return set;
+}
+function verifyQuestion(q){
+  if(!q || !q.c || !q.s) return false;
+  try{
+    const st=applySeq(normTokens(q.s));
+    if(!q.z) return caseStates(q.c).has(st.join(''));
+    if(zblsSolved(st)) return false;          /* スロットが崩れていない */
+    const sol=normTokens(q.z.sol), V=caseStates(q.c);
+    let n=0;
+    for(const a of AUF4){
+      const base=a?applySeq(normTokens(a),st.slice()):st.slice();
+      const after=applySeq(sol,base);
+      if(!zblsSolved(after)) continue;
+      n++;
+      /* ZBLSのみでは続く ZBLL を約束していないので、一致は見ない */
+      if(practice==='both' && !V.has(after.join(''))) return false;
+    }
+    return practice==='both' ? n===1 : n>=1;
+  }catch(e){ return false; }
+}
+function buildQuestion(){
+  const unit=nextCase();
+  let last=null;
+  for(let k=0;k<8;k++){
+    const q=makeQuestion(unit);
+    if(!q) return null;
+    last=q;
+    if(verifyQuestion(q)) return q;
+  }
+  return last;   /* 念のため：検算が通らなくても出題は止めない */
+}
 
 function newScramble(){
   let q=nextQ; nextQ=null;
