@@ -747,6 +747,33 @@ function merge(a,b){
   return t.join(' ');
 }
 
+/* ---- ZBLS の開始状態を図に合わせる ----
+   一覧に出す図はそのケースの「崩した直後の状態」なので、セットアップを
+   回した結果が図と一致していなければならない（手順はその状態から AUF なしで
+   解けること）。元データに 1 件だけ AUF が 1 つずれているものがあるので、
+   図を正として読み込み時に合わせ直す。セットアップに足りない AUF を足し、
+   手順の先頭にはその逆を足す。3 スロットは y 回転の違いだけで U 回しは
+   どのスロットでも U なので、同じ AUF をそのまま使える。 */
+(function alignZbls(){
+  const A=['U','U2',"U'"];
+  const same=(fd,st)=>{ for(let k=0;k<27;k++){ if(fd[k]==='x') continue; if(fd[k]!==st[k]) return false; } return true; };
+  ZBLS.forEach(c=>{
+    const fd=c[1], setups=c[2], sols=c[3];
+    let st;
+    try{ st=applySeq(normTokens(setups[0])); }catch(e){ return; }
+    if(same(fd,st)) return;
+    for(const a of A){
+      if(!same(fd, applySeq(normTokens(a), st.slice()))) continue;
+      const inv=invSeq(normTokens(a)).join(' ');
+      for(let si=0;si<3;si++){
+        setups[si]=setups[si]+' '+a;
+        sols[si]=inv+' '+sols[si];
+      }
+      return;
+    }
+  });
+})();
+
 /* ---- 保存まわり ---- */
 const CKEY=c=>c.g+'|'+c.cp+'|'+c.lab;
 const BYKEY=new Map(CASES.map(c=>[CKEY(c),c.id]));
